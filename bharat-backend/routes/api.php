@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\AuthController; // <--- Make sure this is imported
 // Public Routes
 Route::post('/send-otp', [AuthController::class, 'sendOtp']);
 Route::post('/verify-otp', [AuthController::class, 'verifyOtp']);
+Route::post('/savings/deposit', [App\Http\Controllers\Api\AuthController::class, 'depositSavings']);
 
 // Protected Routes (Only for logged-in users with a valid token)
 Route::middleware('auth:sanctum')->group(function () {
@@ -16,6 +17,11 @@ Route::middleware('auth:sanctum')->group(function () {
         return $request->user();
     });
 
-    // NEW: The route for the Members Screen
+    // The route for the Members Screen
     Route::get('/members', [App\Http\Controllers\Api\AuthController::class, 'getMembers']);
+
+    // The deposit route is outside the group!
+Route::post('/savings/deposit', [AuthController::class, 'depositSavings']);
+Route::get('/user/dashboard', [App\Http\Controllers\Api\AuthController::class, 'getDashboardStats']);
+
 });

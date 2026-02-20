@@ -1,44 +1,51 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import api from '../services/api'; // <--- We import our API tool
+import { useFocusEffect } from '@react-navigation/native'; // Added this for auto-refresh
+import api from '../services/api';
 
 const DashboardScreen = ({ navigation }) => {
-  // We set up a state variable to hold the real user data
   const [userData, setUserData] = useState(null);
+  const [totalSavings, setTotalSavings] = useState(0); // Added state for savings
   const [loading, setLoading] = useState(true);
 
-  // This runs the moment the Dashboard opens
-  useEffect(() => {
-    const fetchRealUser = async () => {
-      try {
-        // 1. Get the locked token from the vault
-        const token = await SecureStore.getItemAsync('userToken');
-        
-        // 2. Knock on Laravel's /user door and show the token
-        const response = await api.get('/user', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+  // We use useFocusEffect so it runs EVERY time you look at the screen
+  useFocusEffect(
+    useCallback(() => {
+      const fetchData = async () => {
+        try {
+          // 1. Get the token
+          const token = await SecureStore.getItemAsync('userToken');
+          
+          // 2. Fetch User Details (Name, etc.)
+          const userResponse = await api.get('/user', {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          setUserData(userResponse.data);
 
-        // 3. Save the real data!
-        setUserData(response.data);
-      } catch (error) {
-        console.error("Failed to fetch user:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
+          // 3. Fetch Dashboard Stats (Total Savings) - THE NEW PART
+          const statsResponse = await api.get('/user/dashboard', {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          setTotalSavings(statsResponse.data.total_savings);
 
-    fetchRealUser();
-  }, []);
+        } catch (error) {
+          console.error("Failed to fetch dashboard data:", error);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      fetchData();
+    }, [])
+  );
 
   const handleLogout = async () => {
     await SecureStore.deleteItemAsync('userToken');
     navigation.replace('Login');
   };
 
-  // Show a loading spinner while waiting for Laravel
   if (loading) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -53,7 +60,6 @@ const DashboardScreen = ({ navigation }) => {
       {/* Header Section */}
       <View style={styles.header}>
         <View>
-          {/* We now use the REAL name from the database! */}
           <Text style={styles.greeting}>Hello, {userData?.name || "Member"} 👋</Text>
           <Text style={styles.groupName}>Bharat Bachat</Text>
         </View>
@@ -62,14 +68,16 @@ const DashboardScreen = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
-      {/* Financial Summary Cards (Still mock numbers for now until we build the savings table) */}
+      {/* Financial Summary Cards */}
       <View style={styles.cardsContainer}>
+        {/* TOTAL SAVINGS CARD - Now connected to real data! */}
         <View style={[styles.card, styles.savingsCard]}>
           <Ionicons name="wallet" size={32} color="#fff" />
           <Text style={styles.cardLabel}>Total Savings</Text>
-          <Text style={styles.cardValue}>₹12,500</Text>
+          <Text style={styles.cardValue}>₹{totalSavings}</Text>
         </View>
 
+        {/* LOAN CARD - Still hardcoded for now, we will fix this later */}
         <View style={[styles.card, styles.loanCard]}>
           <MaterialCommunityIcons name="cash-remove" size={32} color="#fff" />
           <Text style={styles.cardLabel}>Active Loan</Text>
@@ -89,25 +97,34 @@ const DashboardScreen = ({ navigation }) => {
       {/* Quick Actions */}
       <Text style={styles.sectionTitle}>Quick Actions</Text>
       <View style={styles.actionGrid}>
-        <TouchableOpacity style={styles.actionButton}>
+        
+        {/* ADD SAVINGS BUTTON */}
+        <TouchableOpacity 
+          style={styles.actionButton} 
+          onPress={() => navigation.navigate('AddSavings')}
+        >
           <View style={styles.iconCircle}>
             <Ionicons name="add-circle-outline" size={30} color="#2952a3" />
           </View>
           <Text style={styles.actionText}>Add Savings</Text>
         </TouchableOpacity>
-
+        
+        {/* MEMBERS BUTTON */}
         <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Members')}>
           <View style={styles.iconCircle}>
             <Ionicons name="people-outline" size={30} color="#2952a3" />
           </View>
           <Text style={styles.actionText}>Members</Text>
         </TouchableOpacity>
+
+        {/* Placeholder for alignment or future button */}
+        <View style={styles.actionButton} /> 
+
       </View>
     </ScrollView>
   );
 };
 
-// ... [Keep your exact same styles from before down here]
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f4f6f8' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 24, paddingTop: 60, backgroundColor: '#fff' },

@@ -91,5 +91,38 @@ class AuthController extends Controller
             ], 500);
         }
     }
+    // 4. Deposit Savings
+    public function depositSavings(Request $request)
+    {
+        // Validate the data
+        $request->validate([
+            'amount' => 'required|numeric|min:1',
+            'date' => 'required|date'
+        ]);
 
+        // Create the transaction record
+        // Note: You might need to adjust 'App\Models\Transaction' if your model is named differently
+        $transaction = new \App\Models\Transaction();
+        $transaction->user_id = $request->user()->id;
+        $transaction->type = 'credit';
+        $transaction->amount = $request->amount;
+        $transaction->transaction_date = $request->date;
+        $transaction->status = 'success';
+        $transaction->save();
+
+        // Update the user's total savings balance (Optional, but good for the dashboard)
+        // $request->user()->increment('total_savings', $request->amount);
+
+        return response()->json([
+            'message' => 'Savings deposited successfully!',
+            'data' => $transaction
+        ], 200);
+    }
+
+    public function getDashboardStats(Request $request)
+    {
+        $user = $request->user();
+        $totalSavings = \App\Models\Transaction::where('user_id', $user->id)->where('type', 'credit')->sum('amount');
+        return response()->json(['total_savings' => $totalSavings], 200);
+    }
 } 
