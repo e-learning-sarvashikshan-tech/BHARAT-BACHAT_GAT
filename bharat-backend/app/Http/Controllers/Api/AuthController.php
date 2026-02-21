@@ -5,35 +5,76 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Models\User;
+use App\Models\Transaction;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Log;
 
 class AuthController extends Controller
 {
-    // 1. Send OTP (Login or Register)
+    /**
+     * 1. SEND OTP
+     * This function handles both login for existing users 
+     * and registration for new users.
+     * * For New Users: Requires Name, Phone, and Password.
+     * For Existing: Requires only Email.
+     */
     public function sendOtp(Request $request)
     {
-        $request->validate(['email' => 'required|email']);
+        Log::info('OTP Request received for: ' . $request->email);
 
-        // Find user or create a new one
-        $user = User::firstOrCreate(
-            ['email' => $request->email],
-            ['name' => 'New User', 'phone' => ''] // Default values
-        );
+        $request->validate([
+            'email' => 'required|email',
+            'phone' => 'nullable|digits:10',
+            'name' => 'nullable|string',
+            'password' => 'nullable|string|min:6'
+        ]);
 
-        // Generate a 4-digit OTP
+        $user = User::where('email', $request->email)->first();
+
+        // LOGIC FOR NEW USER REGISTRATION
+        if (!$user) {
+            Log::info('New user detected. Attempting registration...');
+
+            if (!$request->name || !$request->phone || !$request->password) {
+                return response()->json([
+                    'message' => 'New user detected. Name, Phone, and Password are required.'
+                ], 422);
+            }
+
+            // Ensure the mobile number is unique in the database
+            if (User::where('phone', $request->phone)->exists()) {
+                return response()->json([
+                    'message' => 'This mobile number is already registered with another account.'
+                ], 422);
+            }
+
+            // Create the user record with a hashed password
+            $user = User::create([
+                'name' => $request->name,
+                'email' => $request->email,
+                'phone' => $request->phone,
+                'password' => Hash::make($request->password), 
+            ]);
+
+            Log::info('User created successfully: ' . $user->id);
+        }
+
+        // Generate a 4-digit random OTP
         $otp = rand(1000, 9999);
-        $user->otp_code = $otp;
+        $user->otp_code = $otp; 
         $user->save();
 
-        // In a real app, you would send an email here.
-        // For development, we return the OTP in the response so you can see it.
         return response()->json([
-            'message' => 'OTP sent successfully',
+            'message' => 'OTP generated successfully',
             'debug_otp' => $otp 
         ]);
     }
 
-    // 2. Verify OTP
+    /**
+     * 2. VERIFY OTP
+     * Validates the 4-digit code and returns a Bearer Token.
+     */
     public function verifyOtp(Request $request)
     {
         $request->validate([
@@ -42,67 +83,122 @@ class AuthController extends Controller
             'language' => 'nullable'
         ]);
 
-        // 1. Find the user by email ONLY
         $user = User::where('email', $request->email)->first();
 
-        // 2. Check if user exists
-        if (!$user) {
-            return response()->json(['message' => 'User not found in database'], 404);
+        // Security check: Match OTP
+        if (!$user || $user->otp_code != $request->otp) {
+            Log::warning('Failed OTP attempt for: ' . $request->email);
+            return response()->json(['message' => 'Invalid or expired OTP'], 401);
         }
 
-        // 3. Compare the OTPs using PHP (!= allows string-to-number matching)
-        if ($user->otp_code != $request->otp) {
-            // DEBUGGING: This will show you exactly what is mismatched!
-            return response()->json([
-                'message' => 'Invalid OTP',
-                'db_has' => $user->otp_code,
-                'you_typed' => $request->otp
-            ], 401);
-        }
-
-        // 4. Clear OTP after success
+        // Clear OTP code to prevent reuse
         $user->otp_code = null;
+
+        // Save language preference if provided
         if($request->language) {
             $user->language_pref = $request->language;
         }
+
         $user->save();
 
-        // 5. Create a secure token for the app to use
+        // Generate Sanctum Access Token
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
-            'message' => 'Login successful',
+            'message' => 'OTP Login successful',
             'access_token' => $token,
             'user' => $user
         ], 200);
-
     }
-    // 3. Get all Bachat Gat Members
+
+    /**
+     * 3. LOGIN WITH PASSWORD
+     * Allows users to bypass OTP by using their set password.
+     */
+    public function loginWithPassword(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email',
+            'password' => 'required'
+        ]);
+
+        $user = User::where('email', $request->email)->first();
+
+        // Check user existence and verify hashed password
+        if (!$user || !Hash::check($request->password, $user->password)) {
+            Log::warning('Failed password login attempt: ' . $request->email);
+            return response()->json(['message' => 'Invalid email or password'], 401);
+        }
+
+        // Generate Sanctum Access Token
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        return response()->json([
+            'message' => 'Password login successful',
+            'access_token' => $token,
+            'user' => $user
+        ]);
+    }
+
+    /**
+     * 4. MEMBER MANAGEMENT
+     * Functions to manage the Bachat Gat community members.
+     */
     public function getMembers()
     {
-        try {
-            $members = User::all();
-            return response()->json($members, 200);
-            
-        } catch (\Exception $e) {
-            return response()->json([
-                'message' => 'Server crashed while fetching members',
-                'error' => $e->getMessage()
-            ], 500);
-        }
+        // Return all registered users (In a real app, filter by Group ID)
+        $members = User::all();
+        return response()->json($members, 200);
     }
-    // 4. Deposit Savings
+
+    public function addMember(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string',
+            'phone' => 'required|digits:10|unique:users,phone',
+            'email' => 'required|email|unique:users,email'
+        ]);
+
+        $user = User::create([
+            'name' => $request->name,
+            'email' => $request->email,
+            'phone' => $request->phone,
+            'password' => Hash::make('123456'), // Default password for manual entries
+        ]);
+
+        return response()->json([
+            'message' => 'Member added successfully!', 
+            'user' => $user
+        ], 201);
+    }
+
+    public function removeMember($id)
+    {
+        $user = User::find($id);
+
+        if (!$user) {
+            return response()->json(['message' => 'Member not found'], 404);
+        }
+        
+        $user->delete();
+        Log::info('Member removed: ' . $id);
+
+        return response()->json(['message' => 'Member removed successfully']);
+    }
+
+    /**
+     * 5. DASHBOARD & TRANSACTIONS
+     * Handles the financial records of the user.
+     */
     public function depositSavings(Request $request)
     {
-        // Validate the data
         $request->validate([
             'amount' => 'required|numeric|min:1',
             'date' => 'required|date'
         ]);
 
-        // Create the transaction record
-        // Note: You might need to adjust 'App\Models\Transaction' if your model is named differently
-        $transaction = new \App\Models\Transaction();
+        // Create new transaction record linked to logged-in user
+        $transaction = new Transaction();
         $transaction->user_id = $request->user()->id;
         $transaction->type = 'credit';
         $transaction->amount = $request->amount;
@@ -110,11 +206,8 @@ class AuthController extends Controller
         $transaction->status = 'success';
         $transaction->save();
 
-        // Update the user's total savings balance (Optional, but good for the dashboard)
-        // $request->user()->increment('total_savings', $request->amount);
-
         return response()->json([
-            'message' => 'Savings deposited successfully!',
+            'message' => 'Savings deposited successfully!', 
             'data' => $transaction
         ], 200);
     }
@@ -122,7 +215,21 @@ class AuthController extends Controller
     public function getDashboardStats(Request $request)
     {
         $user = $request->user();
-        $totalSavings = \App\Models\Transaction::where('user_id', $user->id)->where('type', 'credit')->sum('amount');
-        return response()->json(['total_savings' => $totalSavings], 200);
+
+        // 1. Calculate sum of all credit transactions
+        $totalSavings = Transaction::where('user_id', $user->id)
+                                    ->where('type', 'credit')
+                                    ->sum('amount');
+
+        // 2. Fetch the 5 most recent transactions for history
+        $recentTransactions = Transaction::where('user_id', $user->id)
+                                          ->orderBy('created_at', 'desc')
+                                          ->take(5)
+                                          ->get();
+
+        return response()->json([
+            'total_savings' => $totalSavings,
+            'recent_transactions' => $recentTransactions
+        ], 200);
     }
-} 
+}
