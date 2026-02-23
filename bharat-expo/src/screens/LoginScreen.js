@@ -94,9 +94,28 @@ const LoginScreen = ({ navigation }) => {
 
         const response = await api.post('/send-otp', payload);
         setOtpSent(true);
-        Alert.alert("OTP Sent", `Your development code is: ${response.data.debug_otp}`);
+        
+        // 1. REMOVED THE DEBUG OTP POPUP! 
+        // Now it just tells the user to check their email.
+        Alert.alert("OTP Sent", "Please check your email for the 4-digit OTP.");
+
     } catch (error) {
-        Alert.alert("Error", error.response?.data?.message || "Failed to send OTP.");
+        if (!error.response) {
+            Alert.alert("Connection Error", "Cannot reach the server. Please check your internet connection.");
+        } else {
+            const serverMessage = error.response.data.message;
+            
+            // 2. AUTO-REDIRECT TO REGISTRATION!
+            // If Laravel tells us this is a new user, we automatically open the registration form.
+            if (serverMessage && serverMessage.includes('New user')) {
+                setIsRegistering(true); // Automatically open the Name, Phone, and Password fields
+                Alert.alert("Welcome!", "Looks like you are new here. Please fill in your details to create an account.");
+            } 
+            // Handle other normal errors (like duplicate phone number)
+            else {
+                Alert.alert("Notice", serverMessage || "Validation Error");
+            }
+        }
     } finally {
         setLoading(false);
     }
