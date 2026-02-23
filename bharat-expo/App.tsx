@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import MembersScreen from './src/screens/MembersScreen';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import * as SecureStore from 'expo-secure-store';
 import { View, ActivityIndicator } from 'react-native';
-
+import AddSavingsScreen from './src/screens/AddSavingsScreen';
+import MembersScreen from './src/screens/MembersScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
+import AddMemberScreen from './src/screens/AddMemberScreen';
 
 const Stack = createStackNavigator();
 
 export default function App() {
-  const [initialRoute, setInitialRoute] = useState(null);
+  const [initialRoute, setInitialRoute] = useState<string | null>(null);
 
   useEffect(() => {
     const checkToken = async () => {
@@ -50,6 +51,16 @@ export default function App() {
           component={MembersScreen} 
           options={{ title: 'Group Members' }} 
         />
+        <Stack.Screen 
+          name="AddMember" 
+          component={AddMemberScreen} 
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen 
+          name="AddSavings" 
+          component={AddSavingsScreen} 
+          options={{ title: 'Add Savings' }} 
+        /> 
       </Stack.Navigator>
     </NavigationContainer>
   );
