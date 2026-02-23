@@ -1,21 +1,40 @@
-<?php  // <--- THIS MUST BE AT THE TOP
+<?php
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Api\AuthController; // <--- Make sure this is imported
+use App\Http\Controllers\Api\AuthController;
 
-// Public Routes
+/*
+|--------------------------------------------------------------------------
+| Public Routes (No Token Needed)
+|--------------------------------------------------------------------------
+*/
+// Users can access these without being logged in
 Route::post('/send-otp', [AuthController::class, 'sendOtp']);
 Route::post('/verify-otp', [AuthController::class, 'verifyOtp']);
+Route::post('/login-password', [AuthController::class, 'loginWithPassword']); 
 
-// Protected Routes (Only for logged-in users with a valid token)
+
+/*
+|--------------------------------------------------------------------------
+| Protected Routes (Token Required)
+|--------------------------------------------------------------------------
+*/
+// Users MUST have a valid token to access these
 Route::middleware('auth:sanctum')->group(function () {
     
-    // The route we used for the Dashboard
+    // User Info & Dashboard
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
+    Route::get('/user/dashboard', [AuthController::class, 'getDashboardStats']);
 
-    // NEW: The route for the Members Screen
-    Route::get('/members', [App\Http\Controllers\Api\AuthController::class, 'getMembers']);
+    // Member Management
+    Route::get('/members', [AuthController::class, 'getMembers']);
+    Route::post('/members/add', [AuthController::class, 'addMember']);
+    Route::delete('/members/{id}', [AuthController::class, 'removeMember']);
+    
+    // Savings Logic
+    Route::post('/savings/deposit', [AuthController::class, 'depositSavings']);
+
 });
