@@ -9,66 +9,71 @@ use App\Models\Transaction;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\OtpMail;
 
 class AuthController extends Controller
 {
-    /**
-     * 1. SEND OTP
-     * This function handles both login for existing users 
-     * and registration for new users.
-     * * For New Users: Requires Name, Phone, and Password.
-     * For Existing: Requires only Email.
-     */
+    // 1. Send OTP
     public function sendOtp(Request $request)
     {
-        Log::info('OTP Request received for: ' . $request->email);
-
-        $request->validate([
+        // 1. Force Laravel to return JSON even if validation fails
+        $validator = Validator::make($request->all(), [
             'email' => 'required|email',
             'phone' => 'nullable|digits:10',
             'name' => 'nullable|string',
             'password' => 'nullable|string|min:6'
         ]);
 
-        $user = User::where('email', $request->email)->first();
-
-        // LOGIC FOR NEW USER REGISTRATION
-        if (!$user) {
-            Log::info('New user detected. Attempting registration...');
-
-            if (!$request->name || !$request->phone || !$request->password) {
-                return response()->json([
-                    'message' => 'New user detected. Name, Phone, and Password are required.'
-                ], 422);
-            }
-
-            // Ensure the mobile number is unique in the database
-            if (User::where('phone', $request->phone)->exists()) {
-                return response()->json([
-                    'message' => 'This mobile number is already registered with another account.'
-                ], 422);
-            }
-
-            // Create the user record with a hashed password
-            $user = User::create([
-                'name' => $request->name,
-                'email' => $request->email,
-                'phone' => $request->phone,
-                'password' => Hash::make($request->password), 
-            ]);
-
-            Log::info('User created successfully: ' . $user->id);
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation Error',
+                'errors' => $validator->errors()
+            ], 422);
         }
 
-        // Generate a 4-digit random OTP
-        $otp = rand(1000, 9999);
-        $user->otp_code = $otp; 
-        $user->save();
+        try {
+            $user = User::where('email', $request->email)->first();
 
-        return response()->json([
-            'message' => 'OTP generated successfully',
-            'debug_otp' => $otp 
-        ]);
+            if (!$user) {
+                // Check if we are missing registration info
+                if (!$request->name || !$request->phone || !$request->password) {
+                    return response()->json([
+                        'message' => 'New user! Please enter Name, Phone, and Password to register.'
+                    ], 400); // This is the 'Bad Request' fix
+                }
+
+                // Check for duplicate phone
+                if (User::where('phone', $request->phone)->exists()) {
+                    return response()->json(['message' => 'This mobile number is already registered.'], 409);
+                }
+
+                $user = User::create([
+                    'name' => $request->name,
+                    'email' => $request->email,
+                    'phone' => $request->phone,
+                    'password' => Hash::make($request->password),
+                ]);
+            }
+
+            $otp = rand(1000, 9999);
+            $user->otp_code = $otp; 
+            $user->save();
+            Log::info('Attempting to send OTP to: ' . $user->email);
+            Mail::to($user->email)->send(new OtpMail($otp));
+            Log::info('Mail function executed.');
+             
+            return response()->json([
+                'message' => 'OTP generated successfully',
+                'debug_otp' => $otp 
+            ], 200);
+
+        } catch (\Exception $e) {
+            // This catches database errors (like missing columns)
+            return response()->json([
+                'message' => 'Server Error: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
