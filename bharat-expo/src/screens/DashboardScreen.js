@@ -6,13 +6,13 @@ import {
   TouchableOpacity, 
   ScrollView, 
   ActivityIndicator,
-  Alert
+  Alert 
 } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import api from '../services/api';
-import { getUnsyncedTransactions, markAsSynced } from '../services/database'; // NEW: Database helpers
+import { getUnsyncedTransactions, markAsSynced } from '../services/database'; 
 
 const DashboardScreen = ({ navigation }) => {
   const [userData, setUserData] = useState(null);
@@ -26,13 +26,11 @@ const DashboardScreen = ({ navigation }) => {
         try {
           const token = await SecureStore.getItemAsync('userToken');
 
-          // 1. Fetch User Profile
           const userResponse = await api.get('/user', {
             headers: { Authorization: `Bearer ${token}` }
           });
           setUserData(userResponse.data);
 
-          // 2. Fetch Dashboard Stats
           const statsResponse = await api.get('/user/dashboard', {
             headers: { Authorization: `Bearer ${token}` }
           });
@@ -40,27 +38,22 @@ const DashboardScreen = ({ navigation }) => {
           setTotalSavings(statsResponse.data.total_savings);
           setRecentTransactions(statsResponse.data.recent_transactions || []);
 
-          // 3. NEW: Background Sync Logic
-          // Check for local SQLite records that haven't been sent to Kunal's API yet
+          // Background Sync Logic
           const unsynced = await getUnsyncedTransactions();
-          if (unsynced.length > 0) {
+          if (unsynced && unsynced.length > 0) {
             console.log(`Found ${unsynced.length} unsynced items. Attempting sync...`);
-            
             for (const item of unsynced) {
               try {
                 await api.post('/transactions/deposit', {
                   amount: item.amount,
                   method: item.method,
-                  type: item.type,
-                  date: item.date // Send the original local timestamp
+                  type: item.type
                 });
-                
-                // If the API call succeeds, update the local record as synced
                 await markAsSynced(item.id);
-                console.log(`Successfully synced transaction ID: ${item.id}`);
-              } catch (syncError) {
-                console.log("Sync failed (still offline or server error). Will retry later.");
-                break; // Stop loop if network is still down
+                console.log(`Synced transaction ID: ${item.id}`);
+              } catch (e) {
+                console.log("Still offline, skipping sync.");
+                break; 
               }
             }
           }
@@ -111,20 +104,24 @@ const DashboardScreen = ({ navigation }) => {
           <Text style={styles.cardValue}>₹{totalSavings}</Text>
         </View>
 
-        <View style={[styles.card, styles.loanCard]}>
-          <MaterialCommunityIcons name="cash-remove" size={32} color="#fff" />
-          <Text style={styles.cardLabel}>Active Loan</Text>
-          <Text style={styles.cardValue}>₹5,000</Text>
-        </View>
+        {/* Link Active Loan to Calculator */}
+        <TouchableOpacity 
+          style={[styles.card, styles.loanCard]}
+          onPress={() => navigation.navigate('LoanCalculator')}
+        >
+          <MaterialCommunityIcons name="calculator-variant" size={32} color="#fff" />
+          <Text style={styles.cardLabel}>Loan Tool</Text>
+          <Text style={styles.cardValue}>Calculator</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Group Info Section */}
       <View style={styles.infoSection}>
         <Text style={styles.sectionTitle}>Group Details</Text>
-        <div style={styles.infoRow}>
+        <View style={styles.infoRow}>
           <Ionicons name="calendar" size={24} color="#2952a3" />
           <Text style={styles.infoText}>Next Meeting: <Text style={styles.boldText}>10th March</Text></Text>
-        </div>
+        </View>
         
         <TouchableOpacity 
           style={styles.createGroupButton}
