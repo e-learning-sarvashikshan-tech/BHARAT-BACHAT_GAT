@@ -8,6 +8,7 @@ import MembersScreen from './src/screens/MembersScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import AddMemberScreen from './src/screens/AddMemberScreen';
+import CreateGroupScreen from './src/screens/CreateGroupScreen';
 
 const Stack = createStackNavigator();
 
@@ -61,6 +62,11 @@ export default function App() {
           component={AddSavingsScreen} 
           options={{ title: 'Add Savings' }} 
         /> 
+        <Stack.Screen 
+          name="CreateGroup"
+          component={CreateGroupScreen} 
+          options={{ title: 'Create Group' }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );
