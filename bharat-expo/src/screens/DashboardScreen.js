@@ -17,10 +17,22 @@ const fetchData = async () => {
 try {
 const token = await SecureStore.getItemAsync('userToken');
 
+<<<<<<< HEAD
+        // 3. Save the real data!
+        setUserData(response.data);
+      } catch (error) {
+        console.error("Failed to fetch user:", error();
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+=======
       const userResponse = await api.get('/user', {
         headers: { Authorization: `Bearer ${token}` }
       });
       setUserData(userResponse.data);
+>>>>>>> dab1ef19837fdccbcccb7806382deafb47ab542e
 
       const statsResponse = await api.get('/user/dashboard', {
         headers: { Authorization: `Bearer ${token}` }
@@ -145,6 +157,28 @@ return (
 };
 
 const styles = StyleSheet.create({
+<<<<<<< HEAD
+  container: { flex: 1, backgroundColor: '#f4f6f8' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 24, paddingTop: 60, backgroundColor: '#fff' },
+  greeting: { fontSize: 24, fontWeight: 'bold', color: '#333' },
+  groupName: { fontSize: 16, color: '#888', marginTop: 4 },
+  logoutButton: { padding: 8, backgroundColor: '#ffe6e6', borderRadius: 12 },
+  cardsContainer: { flexDirection: 'row', padding: 20, justifyContent: 'space-between' },
+  card: { flex: 1, padding: 20, borderRadius: 16, elevation: 4, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
+  savingsCard: { backgroundColor: '#2952a3', marginRight: 10 },
+  loanCard: { backgroundColor: '#e67e22', marginLeft: 10 },
+  cardLabel: { color: 'rgb(251, 251, 251)', fontSize: 14, marginTop: 12, marginBottom: 4 },
+  cardValue: { color: '#fff', fontSize: 22, fontWeight: 'bold' },
+  infoSection: { backgroundColor: '#fff', margin: 20, padding: 20, borderRadius: 16, marginTop: 0 },
+  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 16, marginLeft: 20 },
+  infoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  infoText: { fontSize: 16, color: '#555', marginLeft: 12 },
+  boldText: { fontWeight: 'bold', color: '#333' },
+  actionGrid: { flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 10, paddingBottom: 40 },
+  actionButton: { alignItems: 'center', flex: 1 },
+  iconCircle: { backgroundColor: '#eef2f9', padding: 15, borderRadius: 50, marginBottom: 8 },
+  actionText: { fontSize: 14, color: '#555', fontWeight: '500' }
+=======
 container: { flex: 1, backgroundColor: '#f4f6f8' },
 header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 24, paddingTop: 60, backgroundColor: '#fff' },
 greeting: { fontSize: 24, fontWeight: 'bold', color: '#333' },
@@ -175,6 +209,7 @@ transactionType: { fontSize: 16, fontWeight: 'bold', color: '#333' },
 transactionDate: { fontSize: 12, color: '#888', marginTop: 2 },
 transactionAmount: { fontSize: 16, fontWeight: 'bold', color: '#28a745' },
 noTransactionsText: { textAlign: 'center', color: '#888', padding: 20 }
+>>>>>>> dab1ef19837fdccbcccb7806382deafb47ab542e
 });
 
 export default DashboardScreen;
