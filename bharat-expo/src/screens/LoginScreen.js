@@ -86,7 +86,7 @@ const LoginScreen = ({ navigation }) => {
     setErrors({}); 
     try {
         const payload = { 
-            email: email.trim(),
+            email: email.trim().toLowerCase(),
             name: isRegistering ? name : null,
             phone: isRegistering ? phone : null,
             password: isRegistering ? password : null, 
@@ -133,9 +133,12 @@ const LoginScreen = ({ navigation }) => {
      setLoading(true);
      setErrors({});
      try {
+        // NEW: Log exactly what is being sent to check for weird formatting
+        console.log("SENDING OTP PAYLOAD:", { email: email.trim().toLowerCase(), otp: Number(otpInput.trim()) });
+
         const response = await api.post('/verify-otp', {
-            email: email.trim(),
-            otp: otpInput.trim(),
+            email: email.trim().toLowerCase(), // NEW: Added toLowerCase()
+            otp: Number(otpInput.trim()),      // NEW: Wrapped in Number()
             language: language
         });
         await SecureStore.setItemAsync('userToken', response.data.access_token);
