@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -12,12 +12,31 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as SecureStore from 'expo-secure-store';
 import api from '../services/api';
+import { saveTransaction } from '../services/database'; // NEW: Import local storage helper
 
 const AddSavingsScreen = ({ navigation }) => {
   const [amount, setAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('UPI'); // Default to UPI
+  const [paymentMethod, setPaymentMethod] = useState('UPI'); 
   const [loading, setLoading] = useState(false);
+  const [userId, setUserId] = useState(null);
+
+  // Get the current user ID when the screen loads
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const token = await SecureStore.getItemAsync('userToken');
+        const response = await api.get('/user', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setUserId(response.data.id);
+      } catch (error) {
+        console.error("Could not fetch user ID for transaction", error);
+      }
+    };
+    fetchUser();
+  }, []);
 
   const handleDeposit = async () => {
     // 1. Validate the input
@@ -29,26 +48,41 @@ const AddSavingsScreen = ({ navigation }) => {
     setLoading(true);
 
     try {
-      // 2. Send the transaction to Kunal's API
-      const response = await api.post('/transactions/deposit', {
-        amount: Number(amount),
-        method: paymentMethod,
-        type: 'deposit'
-      });
+      // 2. NEW: ALWAYS save to SQLite first (Offline Safety)
+      // This ensures the data is safe even if the network fails
+      const localSaveSuccessful = await saveTransaction(
+        userId, 
+        'deposit', 
+        Number(amount), 
+        paymentMethod
+      );
 
-      Alert.alert('Success', 'Your savings have been recorded successfully!');
-      
-      // 3. Send them back to the Dashboard to see their new balance
+      if (!localSaveSuccessful) {
+        throw new Error("Local database save failed");
+      }
+
+      // 3. Try to sync with Kunal's API
+      try {
+        await api.post('/transactions/deposit', {
+          amount: Number(amount),
+          method: paymentMethod,
+          type: 'deposit'
+        });
+        
+        Alert.alert('Success', 'Your savings have been recorded and synced!');
+      } catch (apiError) {
+        // If API fails, we don't treat it as a total failure because SQLite worked!
+        Alert.alert(
+          'Saved Locally', 
+          'Recorded in your local Passbook. It will sync to the server when you have internet.'
+        );
+      }
+
       navigation.goBack();
 
     } catch (error) {
-      if (!error.response) {
-        // This is where Sanskar's offline SQLite logic will eventually go!
-        Alert.alert('Offline', 'No internet. This transaction will sync later.');
-      } else {
-        const serverMessage = error.response.data.message;
-        Alert.alert('Transaction Failed', serverMessage || 'Could not process deposit.');
-      }
+      Alert.alert('Error', 'Could not save transaction. Please try again.');
+      console.error(error);
     } finally {
       setLoading(false);
     }
@@ -75,7 +109,7 @@ const AddSavingsScreen = ({ navigation }) => {
             <TextInput
               style={styles.amountInput}
               placeholder="0.00"
-              keyboardType="numeric" // Forces the number pad to open
+              keyboardType="numeric" 
               value={amount}
               onChangeText={setAmount}
               maxLength={6}

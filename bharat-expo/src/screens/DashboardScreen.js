@@ -5,12 +5,14 @@ import {
   StyleSheet, 
   TouchableOpacity, 
   ScrollView, 
-  ActivityIndicator 
+  ActivityIndicator,
+  Alert
 } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import api from '../services/api';
+import { getUnsyncedTransactions, markAsSynced } from '../services/database'; // NEW: Database helpers
 
 const DashboardScreen = ({ navigation }) => {
   const [userData, setUserData] = useState(null);
@@ -24,17 +26,44 @@ const DashboardScreen = ({ navigation }) => {
         try {
           const token = await SecureStore.getItemAsync('userToken');
 
+          // 1. Fetch User Profile
           const userResponse = await api.get('/user', {
             headers: { Authorization: `Bearer ${token}` }
           });
           setUserData(userResponse.data);
 
+          // 2. Fetch Dashboard Stats
           const statsResponse = await api.get('/user/dashboard', {
             headers: { Authorization: `Bearer ${token}` }
           });
           
           setTotalSavings(statsResponse.data.total_savings);
           setRecentTransactions(statsResponse.data.recent_transactions || []);
+
+          // 3. NEW: Background Sync Logic
+          // Check for local SQLite records that haven't been sent to Kunal's API yet
+          const unsynced = await getUnsyncedTransactions();
+          if (unsynced.length > 0) {
+            console.log(`Found ${unsynced.length} unsynced items. Attempting sync...`);
+            
+            for (const item of unsynced) {
+              try {
+                await api.post('/transactions/deposit', {
+                  amount: item.amount,
+                  method: item.method,
+                  type: item.type,
+                  date: item.date // Send the original local timestamp
+                });
+                
+                // If the API call succeeds, update the local record as synced
+                await markAsSynced(item.id);
+                console.log(`Successfully synced transaction ID: ${item.id}`);
+              } catch (syncError) {
+                console.log("Sync failed (still offline or server error). Will retry later.");
+                break; // Stop loop if network is still down
+              }
+            }
+          }
 
         } catch (error) {
           console.error("Failed to fetch dashboard data:", error);
@@ -92,10 +121,10 @@ const DashboardScreen = ({ navigation }) => {
       {/* Group Info Section */}
       <View style={styles.infoSection}>
         <Text style={styles.sectionTitle}>Group Details</Text>
-        <View style={styles.infoRow}>
+        <div style={styles.infoRow}>
           <Ionicons name="calendar" size={24} color="#2952a3" />
           <Text style={styles.infoText}>Next Meeting: <Text style={styles.boldText}>10th March</Text></Text>
-        </View>
+        </div>
         
         <TouchableOpacity 
           style={styles.createGroupButton}
@@ -125,7 +154,6 @@ const DashboardScreen = ({ navigation }) => {
           <Text style={styles.actionText}>Members</Text>
         </TouchableOpacity>
 
-        {/* ADDED: Passbook Button replaces the empty view */}
         <TouchableOpacity 
           style={styles.actionButton} 
           onPress={() => navigation.navigate('Ledger')}

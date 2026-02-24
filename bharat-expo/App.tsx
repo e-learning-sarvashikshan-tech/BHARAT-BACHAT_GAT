@@ -11,6 +11,7 @@ import AddMemberScreen from './src/screens/AddMemberScreen';
 import CreateGroupScreen from './src/screens/CreateGroupScreen';
 import MyGroupScreen from './src/screens/MyGroupScreen';
 import LedgerScreen from './src/screens/LedgerScreen';
+import { initDatabase } from './src/services/database';
 
 const Stack = createStackNavigator();
 
@@ -19,6 +20,7 @@ export default function App() {
 
   useEffect(() => {
     const checkToken = async () => {
+      initDatabase();
       // Look inside the secure vault for our token
       const token = await SecureStore.getItemAsync('userToken');
       // If a token is found, go to Dashboard. Otherwise, go to Login.
