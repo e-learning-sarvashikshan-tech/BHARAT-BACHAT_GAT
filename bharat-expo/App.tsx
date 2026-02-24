@@ -9,6 +9,8 @@ import LoginScreen from './src/screens/LoginScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import AddMemberScreen from './src/screens/AddMemberScreen';
 import CreateGroupScreen from './src/screens/CreateGroupScreen';
+import MyGroupScreen from './src/screens/MyGroupScreen';
+import LedgerScreen from './src/screens/LedgerScreen';
 
 const Stack = createStackNavigator();
 
@@ -47,11 +49,14 @@ export default function App() {
           component={DashboardScreen} 
           options={{ title: 'Bharat Bachat', headerLeft: () => null }} 
         />
+        
+        {/* I changed the name of this older screen to "ManageMembers" */}
         <Stack.Screen 
-          name="Members" 
+          name="ManageMembers" 
           component={MembersScreen} 
-          options={{ title: 'Group Members' }} 
+          options={{ title: 'Manage Members' }} 
         />
+        
         <Stack.Screen 
           name="AddMember" 
           component={AddMemberScreen} 
@@ -60,12 +65,22 @@ export default function App() {
         <Stack.Screen 
           name="AddSavings" 
           component={AddSavingsScreen} 
-          options={{ title: 'Add Savings' }} 
+          options={{ title: 'Deposit Funds' }} 
         /> 
         <Stack.Screen 
           name="CreateGroup"
           component={CreateGroupScreen} 
           options={{ title: 'Create Group' }}
+        />
+        <Stack.Screen 
+          name="Members" 
+          component={MyGroupScreen} 
+          options={{ title: 'My Group' }} 
+        />
+        <Stack.Screen 
+          name="Ledger" 
+          component={LedgerScreen} 
+          options={{ headerShown: false }} 
         />
       </Stack.Navigator>
     </NavigationContainer>

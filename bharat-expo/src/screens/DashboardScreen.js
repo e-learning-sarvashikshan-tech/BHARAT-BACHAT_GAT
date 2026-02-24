@@ -97,7 +97,6 @@ const DashboardScreen = ({ navigation }) => {
           <Text style={styles.infoText}>Next Meeting: <Text style={styles.boldText}>10th March</Text></Text>
         </View>
         
-        {/* ADDED: The Create Group Button here! */}
         <TouchableOpacity 
           style={styles.createGroupButton}
           onPress={() => navigation.navigate('CreateGroup')}
@@ -126,7 +125,16 @@ const DashboardScreen = ({ navigation }) => {
           <Text style={styles.actionText}>Members</Text>
         </TouchableOpacity>
 
-        <View style={styles.actionButton} /> 
+        {/* ADDED: Passbook Button replaces the empty view */}
+        <TouchableOpacity 
+          style={styles.actionButton} 
+          onPress={() => navigation.navigate('Ledger')}
+        >
+          <View style={styles.iconCircle}>
+            <Ionicons name="book-outline" size={30} color="#2952a3" />
+          </View>
+          <Text style={styles.actionText}>Passbook</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Recent Transactions Section */}
@@ -174,11 +182,8 @@ const styles = StyleSheet.create({
   infoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   infoText: { fontSize: 16, color: '#555', marginLeft: 12 },
   boldText: { fontWeight: 'bold', color: '#333' },
-  
-  // NEW STYLES FOR CREATE GROUP BUTTON
   createGroupButton: { backgroundColor: '#eef2ff', padding: 12, borderRadius: 8, alignItems: 'center', marginTop: 10, borderWidth: 1, borderColor: '#2952a3' },
   createGroupButtonText: { color: '#2952a3', fontWeight: 'bold', fontSize: 14 },
-  
   actionGrid: { flexDirection: 'row', justifyContent: 'space-around', paddingHorizontal: 10, paddingBottom: 20 },
   actionButton: { alignItems: 'center', flex: 1 },
   iconCircle: { backgroundColor: '#eef2f9', padding: 15, borderRadius: 50, marginBottom: 8 },
