@@ -1,14 +1,13 @@
 import axios from 'axios';
 
-// Updated to your new local IP address
-const API_URL = 'http://192.168.0.103:8000/api'; 
-
 const api = axios.create({
-    baseURL: API_URL,
-    headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-    },
+  // Your confirmed working IP address
+  baseURL: 'http://192.168.29.84:8000/api', 
+  headers: {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+  },
+  timeout: 10000, 
 });
 
 export default api;
