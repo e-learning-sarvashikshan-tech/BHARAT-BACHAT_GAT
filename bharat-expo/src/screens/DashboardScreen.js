@@ -24,7 +24,8 @@ const DashboardScreen = ({ navigation }) => {
         // 3. Save the real data!
         setUserData(response.data);
       } catch (error) {
-        console.error("Failed to fetch user:", error);
+        console.error("Failed to fetch user:", error();
+        );
       } finally {
         setLoading(false);
       }
@@ -118,7 +119,7 @@ const styles = StyleSheet.create({
   card: { flex: 1, padding: 20, borderRadius: 16, elevation: 4, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
   savingsCard: { backgroundColor: '#2952a3', marginRight: 10 },
   loanCard: { backgroundColor: '#e67e22', marginLeft: 10 },
-  cardLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 14, marginTop: 12, marginBottom: 4 },
+  cardLabel: { color: 'rgb(251, 251, 251)', fontSize: 14, marginTop: 12, marginBottom: 4 },
   cardValue: { color: '#fff', fontSize: 22, fontWeight: 'bold' },
   infoSection: { backgroundColor: '#fff', margin: 20, padding: 20, borderRadius: 16, marginTop: 0 },
   sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 16, marginLeft: 20 },
