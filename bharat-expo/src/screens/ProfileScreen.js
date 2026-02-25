@@ -1,27 +1,72 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Image } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import api from '../services/api';
+import { db } from '../services/database'; 
+
+// Correct libraries installed
+import ViewShot from "react-native-view-shot";
+import * as Sharing from 'expo-sharing';
 
 const ProfileScreen = ({ navigation }) => {
   const [profile, setProfile] = useState(null);
+  const [realSavings, setRealSavings] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const viewShotRef = useRef(); 
 
   useEffect(() => {
-    const getProfileData = async () => {
+    const loadProfileAndStats = async () => {
       try {
         const token = await SecureStore.getItemAsync('userToken');
         const response = await api.get('/user', {
           headers: { Authorization: `Bearer ${token}` }
         });
         setProfile(response.data);
+
+        // Fetch actual savings from SQLite
+        db.transaction(tx => {
+          tx.executeSql(
+            'SELECT SUM(amount) as total FROM transactions',
+            [],
+            (_, { rows }) => {
+              const total = rows.item(0).total || 0;
+              setRealSavings(total);
+            },
+            (_, error) => console.log("SQLite Error: ", error)
+          );
+        });
       } catch (error) {
-        console.error("Profile Fetch Error:", error);
+        console.error("Profile Data Error:", error);
+      } finally {
+        setLoading(false);
       }
     };
-    getProfileData();
+    loadProfileAndStats();
   }, []);
+
+  // Function to capture and share
+  const shareStatus = async () => {
+    try {
+      const uri = await viewShotRef.current.capture();
+      const isAvailable = await Sharing.isAvailableAsync();
+      
+      if (isAvailable) {
+        await Sharing.shareAsync(uri, {
+          dialogTitle: 'Share my Bharat Bachat Status',
+          mimeType: 'image/jpeg',
+        });
+      } else {
+        Alert.alert("Error", "Sharing is not available on this device");
+      }
+    } catch (error) {
+      console.error("Sharing error:", error);
+      Alert.alert("Error", "Failed to capture screen for sharing");
+    }
+  };
+
+  if (loading) return <ActivityIndicator style={{flex:1}} size="large" color="#2952a3" />;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -31,49 +76,43 @@ const ProfileScreen = ({ navigation }) => {
             <Ionicons name="arrow-back" size={28} color="#333" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>My Profile</Text>
-          <View style={{ width: 28 }} /> 
+          <TouchableOpacity onPress={shareStatus}>
+            <Ionicons name="share-social-outline" size={24} color="#2952a3" />
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.profileCard}>
-          <View style={styles.avatarContainer}>
-            <Text style={styles.avatarText}>
-              {profile?.name?.charAt(0) || 'U'}
-            </Text>
+        {/* Capture this area as an image */}
+        <ViewShot ref={viewShotRef} options={{ format: "jpg", quality: 0.9 }}>
+          <View style={styles.profileCard}>
+            <View style={styles.avatarContainer}>
+              <Text style={styles.avatarText}>{profile?.name?.charAt(0) || 'U'}</Text>
+            </View>
+            <Text style={styles.userName}>{profile?.name || "Member"}</Text>
+            <Text style={styles.userEmail}>{profile?.email || "No Email"}</Text>
+            
+            <View style={styles.shareBadge}>
+              <Text style={styles.shareBadgeTitle}>Bharat Bachat Summary</Text>
+              <Text style={styles.shareAmount}>Total Savings: ₹{realSavings}</Text>
+              <Text style={styles.shareDate}>Dated: {new Date().toLocaleDateString()}</Text>
+            </View>
           </View>
-          <Text style={styles.userName}>{profile?.name || "Loading..."}</Text>
-          <Text style={styles.userEmail}>{profile?.email || "Email not found"}</Text>
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>Gat Member</Text>
-          </View>
-        </View>
+        </ViewShot>
 
-        <View style={styles.statsContainer}>
-          <View style={styles.statBox}>
-            <Text style={styles.statLabel}>Total Savings</Text>
-            <Text style={styles.statValue}>₹5,500</Text> 
-          </View>
-          <View style={styles.statBox}>
-            <Text style={styles.statLabel}>Active Loan</Text>
-            <Text style={[styles.statValue, { color: '#e67e22' }]}>₹2,000</Text>
-          </View>
-        </View>
+        <TouchableOpacity style={styles.whatsappButton} onPress={shareStatus}>
+          <Ionicons name="logo-whatsapp" size={20} color="#fff" style={{marginRight: 10}} />
+          <Text style={styles.whatsappButtonText}>Share on WhatsApp</Text>
+        </TouchableOpacity>
 
         <View style={styles.menuSection}>
-          <TouchableOpacity style={styles.menuItem}>
-            <Ionicons name="settings-outline" size={24} color="#2952a3" />
-            <Text style={styles.menuText}>Account Settings</Text>
+          <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Ledger')}>
+            <Ionicons name="list-outline" size={24} color="#2952a3" />
+            <Text style={styles.menuText}>Transaction History</Text>
             <Ionicons name="chevron-forward" size={20} color="#ccc" />
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.menuItem}>
-            <MaterialCommunityIcons name="file-document-outline" size={24} color="#2952a3" />
-            <Text style={styles.menuText}>Download My Statements</Text>
-            <Ionicons name="chevron-forward" size={20} color="#ccc" />
-          </TouchableOpacity>
-
           <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('Attendance')}>
             <Ionicons name="calendar-outline" size={24} color="#2952a3" />
-            <Text style={styles.menuText}>My Attendance History</Text>
+            <Text style={styles.menuText}>Attendance History</Text>
             <Ionicons name="chevron-forward" size={20} color="#ccc" />
           </TouchableOpacity>
         </View>
@@ -91,12 +130,12 @@ const styles = StyleSheet.create({
   avatarText: { color: '#fff', fontSize: 32, fontWeight: 'bold' },
   userName: { fontSize: 22, fontWeight: 'bold', color: '#333' },
   userEmail: { fontSize: 14, color: '#888', marginTop: 5 },
-  badge: { backgroundColor: '#eef2ff', paddingHorizontal: 15, paddingVertical: 5, borderRadius: 12, marginTop: 15 },
-  badgeText: { color: '#2952a3', fontWeight: 'bold', fontSize: 12 },
-  statsContainer: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20 },
-  statBox: { flex: 1, backgroundColor: '#fff', padding: 20, borderRadius: 16, alignItems: 'center', marginHorizontal: 5, elevation: 2 },
-  statLabel: { fontSize: 12, color: '#888', marginBottom: 5 },
-  statValue: { fontSize: 18, fontWeight: 'bold', color: '#2ecc71' },
+  shareBadge: { backgroundColor: '#eef2ff', padding: 15, borderRadius: 16, marginTop: 20, width: '100%', alignItems: 'center' },
+  shareBadgeTitle: { color: '#2952a3', fontWeight: 'bold', fontSize: 14, marginBottom: 5 },
+  shareAmount: { fontSize: 20, fontWeight: 'bold', color: '#2ecc71' },
+  shareDate: { fontSize: 10, color: '#888', marginTop: 5 },
+  whatsappButton: { backgroundColor: '#25D366', flexDirection: 'row', marginHorizontal: 20, padding: 15, borderRadius: 12, justifyContent: 'center', alignItems: 'center', elevation: 2, marginBottom: 10 },
+  whatsappButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   menuSection: { backgroundColor: '#fff', margin: 20, borderRadius: 16, padding: 10, elevation: 2 },
   menuItem: { flexDirection: 'row', alignItems: 'center', padding: 15, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
   menuText: { flex: 1, marginLeft: 15, fontSize: 16, color: '#333' }
