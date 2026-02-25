@@ -13,19 +13,47 @@ export const initDatabase = async () => {
     // PRAGMA journal_mode = WAL improves performance for concurrent reads/writes.
     await db.execAsync(`
       PRAGMA journal_mode = WAL;
+      
+      -- Existing transactions table
       CREATE TABLE IF NOT EXISTS transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
-        type TEXT,           -- 'deposit' or 'withdrawal'
+        type TEXT,
         amount REAL,
-        date TEXT,           -- ISO format date string
-        method TEXT,         -- 'Cash', 'UPI', etc.
-        synced INTEGER DEFAULT 0 -- 0 = local only, 1 = synced to Laravel API
+        date TEXT,
+        method TEXT,
+        synced INTEGER DEFAULT 0
+      );
+
+      -- NEW: Meeting Minutes table
+      CREATE TABLE IF NOT EXISTS meeting_minutes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT,
+        date TEXT,
+        content TEXT
       );
     `);
-    console.log("SQLite: Bharat Bachat database is ready!");
+    console.log("SQLite: Bharat Bachat database and Meeting Minutes table are ready!");
   } catch (error) {
     console.error("SQLite Initialization Error:", error);
+  }
+};
+
+/**
+ * Saves meeting minutes locally.
+ */
+export const saveMeetingMinutes = async (title: string, content: string) => {
+  try {
+    const date = new Date().toISOString();
+    await db.runAsync(
+      'INSERT INTO meeting_minutes (title, date, content) VALUES (?, ?, ?)',
+      [title, date, content]
+    );
+    console.log(`SQLite: Saved Meeting Minutes: ${title}`);
+    return true;
+  } catch (error) {
+    console.error("SQLite Save Minutes Error:", error);
+    return false;
   }
 };
 

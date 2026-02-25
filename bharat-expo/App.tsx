@@ -15,6 +15,7 @@ import { initDatabase } from './src/services/database';
 import LoanCalculatorScreen from './src/screens/LoanCalculatorScreen';
 import AttendanceScreen from './src/screens/AttendanceScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import MeetingMinutesScreen from './src/screens/MeetingMinutesScreen';
 
 const Stack = createStackNavigator();
 
@@ -100,7 +101,12 @@ export default function App() {
         <Stack.Screen
           name="Profile" 
           component={ProfileScreen}
-           options={{ headerShown: false }} 
+          options={{ headerShown: false }} 
+        />
+        <Stack.Screen
+          name="MeetingMinutes" 
+          component={MeetingMinutesScreen}
+          options={{ headerShown: false }}
         />
       </Stack.Navigator>
     </NavigationContainer>

@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import api from '../services/api';
-import { db } from '../services/database'; 
+import db  from '../services/database'; 
 
 // Correct libraries installed
 import ViewShot from "react-native-view-shot";
@@ -25,18 +25,15 @@ const ProfileScreen = ({ navigation }) => {
         });
         setProfile(response.data);
 
-        // Fetch actual savings from SQLite
-        db.transaction(tx => {
-          tx.executeSql(
-            'SELECT SUM(amount) as total FROM transactions',
-            [],
-            (_, { rows }) => {
-              const total = rows.item(0).total || 0;
-              setRealSavings(total);
-            },
-            (_, error) => console.log("SQLite Error: ", error)
-          );
-        });
+        // UPDATED: Using the new expo-sqlite async syntax!
+        try {
+          const result = await db.getAllAsync('SELECT SUM(amount) as total FROM transactions');
+          // If there are no transactions, it defaults to 0
+          setRealSavings(result[0]?.total || 0); 
+        } catch (sqlError) {
+          console.log("SQLite Fetch Error: ", sqlError);
+        }
+
       } catch (error) {
         console.error("Profile Data Error:", error);
       } finally {
