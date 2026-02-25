@@ -13,6 +13,7 @@ import MyGroupScreen from './src/screens/MyGroupScreen';
 import LedgerScreen from './src/screens/LedgerScreen';
 import { initDatabase } from './src/services/database';
 import LoanCalculatorScreen from './src/screens/LoanCalculatorScreen';
+import AttendanceScreen from './src/screens/AttendanceScreen';
 
 const Stack = createStackNavigator();
 
@@ -89,6 +90,11 @@ export default function App() {
           name="LoanCalculator" 
           component={LoanCalculatorScreen} 
           options={{ title: 'Loan Calculator' }} 
+        />
+        <Stack.Screen 
+          name="Attendance" 
+          component={AttendanceScreen} 
+          options={{ headerShown: false }} 
         />
       </Stack.Navigator>
     </NavigationContainer>
