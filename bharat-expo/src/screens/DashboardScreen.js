@@ -87,10 +87,10 @@ const DashboardScreen = ({ navigation }) => {
     <ScrollView style={styles.container}>
       {/* Header Section */}
       <View style={styles.header}>
-        <View>
+        <TouchableOpacity onPress={() => navigation.navigate('Profile')}>
           <Text style={styles.greeting}>Hello, {userData?.name || "Member"} 👋</Text>
           <Text style={styles.groupName}>Bharat Bachat (Bachat Gat App)</Text>
-        </View>
+        </TouchableOpacity>
         <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
           <Ionicons name="log-out-outline" size={28} color="#dc3545" />
         </TouchableOpacity>
@@ -131,10 +131,11 @@ const DashboardScreen = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
-      {/* Quick Actions */}
+      {/* Quick Actions Section - Fixed Layout */}
       <Text style={styles.sectionTitle}>Quick Actions</Text>
       <View style={styles.actionGrid}>
         
+        {/* 1. Add Savings */}
         <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('AddSavings')}>
           <View style={styles.iconCircle}>
             <Ionicons name="add-circle-outline" size={30} color="#2952a3" />
@@ -142,6 +143,7 @@ const DashboardScreen = ({ navigation }) => {
           <Text style={styles.actionText}>Add</Text>
         </TouchableOpacity>
         
+        {/* 2. Members List */}
         <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Members')}>
           <View style={styles.iconCircle}>
             <Ionicons name="people-outline" size={30} color="#2952a3" />
@@ -149,7 +151,7 @@ const DashboardScreen = ({ navigation }) => {
           <Text style={styles.actionText}>Members</Text>
         </TouchableOpacity>
 
-        {/* FIXED: Renamed to Meeting and updated the icon */}
+        {/* 3. Meeting Attendance */}
         <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Attendance')}>
           <View style={styles.iconCircle}>
             <Ionicons name="clipboard-outline" size={30} color="#2952a3" />
@@ -157,6 +159,7 @@ const DashboardScreen = ({ navigation }) => {
           <Text style={styles.actionText}>Meeting</Text>
         </TouchableOpacity>
 
+        {/* 4. Passbook */}
         <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Ledger')}>
           <View style={styles.iconCircle}>
             <Ionicons name="book-outline" size={30} color="#2952a3" />
@@ -205,7 +208,7 @@ const styles = StyleSheet.create({
   savingsCard: { backgroundColor: '#2952a3', marginRight: 10 },
   loanCard: { backgroundColor: '#e67e22', marginLeft: 10 },
   cardLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 14, marginTop: 12, marginBottom: 4 },
-  cardValue: { color: '#fff', fontSize: 22, fontWeight: 'bold' },
+  cardValue: { color: '#fff', fontSize: 20, fontWeight: 'bold' }, // Reduced from 22 to prevent wrapping
   infoSection: { backgroundColor: '#fff', margin: 20, padding: 20, borderRadius: 16, marginTop: 0 },
   sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 16, marginLeft: 20 },
   infoRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
@@ -213,10 +216,13 @@ const styles = StyleSheet.create({
   boldText: { fontWeight: 'bold', color: '#333' },
   createGroupButton: { backgroundColor: '#eef2ff', padding: 12, borderRadius: 8, alignItems: 'center', marginTop: 10, borderWidth: 1, borderColor: '#2952a3' },
   createGroupButtonText: { color: '#2952a3', fontWeight: 'bold', fontSize: 14 },
-  actionGrid: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 15, paddingBottom: 20 },
+  
+  // UI FIXES FOR ALIGNMENT
+  actionGrid: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 15, paddingBottom: 20, marginTop: 10 },
   actionButton: { alignItems: 'center', width: '22%' },
-  iconCircle: { backgroundColor: '#eef2f9', padding: 12, borderRadius: 50, marginBottom: 8 },
+  iconCircle: { backgroundColor: '#eef2f9', width: 56, height: 56, borderRadius: 28, marginBottom: 8, justifyContent: 'center', alignItems: 'center', elevation: 2 },
   actionText: { fontSize: 12, color: '#555', fontWeight: '500', textAlign: 'center' },
+  
   transactionsContainer: { backgroundColor: '#fff', marginHorizontal: 20, borderRadius: 16, padding: 10 },
   transactionItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
   transactionIcon: { marginRight: 15 },

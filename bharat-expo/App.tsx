@@ -14,6 +14,7 @@ import LedgerScreen from './src/screens/LedgerScreen';
 import { initDatabase } from './src/services/database';
 import LoanCalculatorScreen from './src/screens/LoanCalculatorScreen';
 import AttendanceScreen from './src/screens/AttendanceScreen';
+import ProfileScreen from './src/screens/ProfileScreen';
 
 const Stack = createStackNavigator();
 
@@ -95,6 +96,11 @@ export default function App() {
           name="Attendance" 
           component={AttendanceScreen} 
           options={{ headerShown: false }} 
+        />
+        <Stack.Screen
+          name="Profile" 
+          component={ProfileScreen}
+           options={{ headerShown: false }} 
         />
       </Stack.Navigator>
     </NavigationContainer>
