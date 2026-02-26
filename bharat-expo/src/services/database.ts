@@ -58,6 +58,20 @@ export const saveMeetingMinutes = async (title: string, content: string) => {
 };
 
 /**
+ * Retrieves all saved meeting minutes.
+ */
+export const getMeetingMinutes = async () => {
+  try {
+    // Fetches all records, newest first
+    const allRows = await db.getAllAsync('SELECT * FROM meeting_minutes ORDER BY id DESC');
+    return allRows;
+  } catch (error) {
+    console.error("SQLite Fetch Minutes Error:", error);
+    return [];
+  }
+};
+
+/**
  * Saves a transaction locally to ensure data isn't lost during offline use.
  */
 export const saveTransaction = async (

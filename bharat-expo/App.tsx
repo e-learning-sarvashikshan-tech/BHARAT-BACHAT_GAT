@@ -16,6 +16,7 @@ import LoanCalculatorScreen from './src/screens/LoanCalculatorScreen';
 import AttendanceScreen from './src/screens/AttendanceScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
 import MeetingMinutesScreen from './src/screens/MeetingMinutesScreen';
+import MeetingHistoryScreen from './src/screens/MeetingHistoryScreen';
 
 const Stack = createStackNavigator();
 
@@ -106,6 +107,11 @@ export default function App() {
         <Stack.Screen
           name="MeetingMinutes" 
           component={MeetingMinutesScreen}
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen 
+          name="MeetingHistory"
+          component={MeetingHistoryScreen}
           options={{ headerShown: false }}
         />
       </Stack.Navigator>

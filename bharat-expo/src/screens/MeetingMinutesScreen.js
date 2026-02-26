@@ -46,6 +46,9 @@ const MeetingMinutesScreen = ({ navigation }) => {
           <Ionicons name="arrow-back" size={28} color="#333" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Meeting Minutes</Text>
+        <TouchableOpacity onPress={() => navigation.navigate('MeetingHistory')}>
+          <Ionicons name="time-outline" size={28} color="#2952a3" />
+        </TouchableOpacity>
         <TouchableOpacity onPress={handleSave}>
           <Text style={styles.saveText}>Save</Text>
         </TouchableOpacity>
