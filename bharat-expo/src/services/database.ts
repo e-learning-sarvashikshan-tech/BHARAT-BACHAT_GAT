@@ -58,6 +58,37 @@ export const saveMeetingMinutes = async (title: string, content: string) => {
 };
 
 /**
+ * Deletes a meeting record by ID.
+ */
+export const deleteMeetingMinute = async (id: number) => {
+  try {
+    await db.runAsync('DELETE FROM meeting_minutes WHERE id = ?', [id]);
+    console.log(`SQLite: Deleted Meeting Minute ID: ${id}`);
+    return true;
+  } catch (error) {
+    console.error("SQLite Delete Minutes Error:", error);
+    return false;
+  }
+};
+
+/**
+ * Updates an existing meeting record.
+ */
+export const updateMeetingMinute = async (id: number, title: string, content: string) => {
+  try {
+    await db.runAsync(
+      'UPDATE meeting_minutes SET title = ?, content = ? WHERE id = ?',
+      [title, content, id]
+    );
+    console.log(`SQLite: Updated Meeting Minute ID: ${id}`);
+    return true;
+  } catch (error) {
+    console.error("SQLite Update Minutes Error:", error);
+    return false;
+  }
+};
+
+/**
  * Retrieves all saved meeting minutes.
  */
 export const getMeetingMinutes = async () => {
