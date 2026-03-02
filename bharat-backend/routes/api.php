@@ -3,6 +3,9 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\API\GroupController;
+use App\Http\Controllers\API\TransactionController;
+use App\Http\Controllers\API\MeetingController;
 
 /*
 |--------------------------------------------------------------------------
@@ -14,7 +17,6 @@ Route::post('/send-otp', [AuthController::class, 'sendOtp']);
 Route::post('/verify-otp', [AuthController::class, 'verifyOtp']);
 Route::post('/login-password', [AuthController::class, 'loginWithPassword']); 
 
-
 /*
 |--------------------------------------------------------------------------
 | Protected Routes (Token Required)
@@ -25,16 +27,25 @@ Route::middleware('auth:sanctum')->group(function () {
     
     // User Info & Dashboard
     Route::get('/user', function (Request $request) {
-        return $request->user();
+        // Updated to automatically load the user's Bachat Gat group details
+        return $request->user()->load('group');
     });
-    Route::get('/user/dashboard', [AuthController::class, 'getDashboardStats']);
-
-    // Member Management
-    Route::get('/members', [AuthController::class, 'getMembers']);
-    Route::post('/members/add', [AuthController::class, 'addMember']);
-    Route::delete('/members/{id}', [AuthController::class, 'removeMember']);
     
-    // Savings Logic
-    Route::post('/savings/deposit', [AuthController::class, 'depositSavings']);
+    // Updated to use the clean GroupController we built
+    Route::get('/user/dashboard', [GroupController::class, 'dashboard']);
+
+    // Group & Member Management 
+    Route::post('/group/create', [GroupController::class, 'createGroup']);
+    Route::post('/group/join', [GroupController::class, 'joinGroup']);
+    Route::get('/group/members', [GroupController::class, 'getMembers']);
+    
+    // Transaction / Ledger Routes (Replaces the old /savings/deposit)
+    Route::post('/transactions/deposit', [TransactionController::class, 'deposit']);
+    Route::get('/passbook', [TransactionController::class, 'passbook']);
+    Route::put('/transactions/{id}', [TransactionController::class, 'update']);
+    Route::delete('/transactions/{id}', [TransactionController::class, 'destroy']);
+
+    // Meeting Minutes & Attendance Sync
+    Route::post('/meetings/sync', [MeetingController::class, 'syncMinutes']);
 
 });

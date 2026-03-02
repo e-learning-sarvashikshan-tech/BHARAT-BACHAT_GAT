@@ -1,14 +1,25 @@
 <?php
+
 namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class Group extends Model
+class Transaction extends Model
 {
-    protected $fillable = ['name', 'created_by'];
+    use HasFactory;
 
-    public function members()
+    // This array allows the Controller to insert data into these columns
+    protected $fillable = [
+        'user_id',
+        'type',
+        'amount',
+        'method',
+        'transaction_date'
+    ];
+
+    public function user()
     {
-        return $this->belongsToMany(User::class, 'group_members')
-                    ->withPivot('role', 'joined_at');
+        return $this->belongsTo(User::class);
     }
 }
