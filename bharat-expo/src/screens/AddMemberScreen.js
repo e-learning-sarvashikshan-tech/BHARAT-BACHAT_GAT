@@ -4,7 +4,12 @@ import { Ionicons } from '@expo/vector-icons';
 import api from '../services/api';
 import * as SecureStore from 'expo-secure-store';
 
-const AddMemberScreen = ({ navigation }) => {
+// FIX 1: We must pass 'route' into the component props here
+const AddMemberScreen = ({ route, navigation }) => {
+  
+  // FIX 2: Moved this INSIDE the component so it knows what 'route' is!
+  const { groupId } = route.params; 
+
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -21,7 +26,9 @@ const AddMemberScreen = ({ navigation }) => {
     try {
       const token = await SecureStore.getItemAsync('userToken');
       
+      // FIX 3: Here is the api.post! We added group_id right here in the payload box.
       const response = await api.post('/members/add', {
+        group_id: groupId, // <-- The missing puzzle piece!
         name: name,
         email: email,
         phone: phone
@@ -34,8 +41,12 @@ const AddMemberScreen = ({ navigation }) => {
 
     } catch (error) {
       console.error("Failed to add member:", error);
-      // If Laravel rejects it (like duplicate email/phone), this triggers
-      Alert.alert("Error", "Could not add member. Make sure the email and phone are not already registered.");
+      
+      // FIX 4: This will now pop up Laravel's exact error message on your phone screen!
+      const errorMessage = error.response?.data?.message || "Make sure the email and phone are not already registered.";
+      Alert.alert("Error", errorMessage);
+      
+      console.log("LARAVEL REJECTION REASON:", error.response?.data);
     } finally {
       setLoading(false);
     }

@@ -40,7 +40,7 @@ class AuthController extends Controller
                 if (!$request->name || !$request->phone || !$request->password) {
                     return response()->json([
                         'message' => 'New user! Please enter Name, Phone, and Password to register.'
-                    ], 400); // This is the 'Bad Request' fix
+                    ], 400); 
                 }
 
                 // Check for duplicate phone
@@ -76,10 +76,7 @@ class AuthController extends Controller
         }
     }
 
-    /**
-     * 2. VERIFY OTP
-     * Validates the 4-digit code and returns a Bearer Token.
-     */
+    // 2. VERIFY OTP
     public function verifyOtp(Request $request)
     {
         $request->validate([
@@ -116,10 +113,7 @@ class AuthController extends Controller
         ], 200);
     }
 
-    /**
-     * 3. LOGIN WITH PASSWORD
-     * Allows users to bypass OTP by using their set password.
-     */
+    // 3. LOGIN WITH PASSWORD
     public function loginWithPassword(Request $request)
     {
         $request->validate([
@@ -145,10 +139,7 @@ class AuthController extends Controller
         ]);
     }
 
-    /**
-     * 4. MEMBER MANAGEMENT
-     * Functions to manage the Bachat Gat community members.
-     */
+    // 4. MEMBER MANAGEMENT
     public function getMembers()
     {
         // Return all registered users (In a real app, filter by Group ID)
@@ -168,7 +159,7 @@ class AuthController extends Controller
             'name' => $request->name,
             'email' => $request->email,
             'phone' => $request->phone,
-            'password' => Hash::make('123456'), // Default password for manual entries
+            'password' => Hash::make('123456'), 
         ]);
 
         return response()->json([
@@ -191,10 +182,7 @@ class AuthController extends Controller
         return response()->json(['message' => 'Member removed successfully']);
     }
 
-    /**
-     * 5. DASHBOARD & TRANSACTIONS
-     * Handles the financial records of the user.
-     */
+    // 5. DASHBOARD & TRANSACTIONS
     public function depositSavings(Request $request)
     {
         $request->validate([
@@ -205,7 +193,7 @@ class AuthController extends Controller
         // Create new transaction record linked to logged-in user
         $transaction = new Transaction();
         $transaction->user_id = $request->user()->id;
-        $transaction->type = 'credit';
+        $transaction->type = 'deposit'; // Standardized to 'deposit'
         $transaction->amount = $request->amount;
         $transaction->transaction_date = $request->date;
         $transaction->status = 'success';
@@ -217,24 +205,38 @@ class AuthController extends Controller
         ], 200);
     }
 
+    // --- UPDATED DASHBOARD STATS ---
     public function getDashboardStats(Request $request)
     {
-        $user = $request->user();
+        try {
+            $user = $request->user();
 
-        // 1. Calculate sum of all credit transactions
-        $totalSavings = Transaction::where('user_id', $user->id)
-                                    ->where('type', 'credit')
-                                    ->sum('amount');
+            // 1. Calculate True Personal Savings (All Groups)
+            // We check for both 'credit' and 'deposit' to support older test data
+            $totalDeposits = Transaction::where('user_id', $user->id)->whereIn('type', ['credit', 'deposit'])->sum('amount');
+            $totalWithdrawals = Transaction::where('user_id', $user->id)->where('type', 'withdrawal')->sum('amount');
+            $trueSavings = $totalDeposits - $totalWithdrawals;
 
-        // 2. Fetch the 5 most recent transactions for history
-        $recentTransactions = Transaction::where('user_id', $user->id)
-                                          ->orderBy('created_at', 'desc')
-                                          ->take(5)
-                                          ->get();
+            // 2. Fetch User's Groups
+            $groups = $user->groups()->get();
 
-        return response()->json([
-            'total_savings' => $totalSavings,
-            'recent_transactions' => $recentTransactions
-        ], 200);
+            // 3. Fetch Recent Transactions WITH Group Names!
+            $recentTransactions = Transaction::with('group:id,name')
+                                             ->where('user_id', $user->id)
+                                             ->orderBy('transaction_date', 'desc')
+                                             ->take(5)
+                                             ->get();
+
+            return response()->json([
+                'total_savings' => $trueSavings,
+                'groups' => $groups,
+                'recent_transactions' => $recentTransactions
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Dashboard Error: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }

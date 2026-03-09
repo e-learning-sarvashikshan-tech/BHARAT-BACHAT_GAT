@@ -9,15 +9,21 @@ return new class extends Migration
     /**
      * Run the migrations.
      */
-    public function up(): void
-    {
-        Schema::create('groups', function (Blueprint $table) {
+    public function up()
+{
+    Schema::create('groups', function (Blueprint $table) {
         $table->id();
         $table->string('name');
-        $table->foreignId('created_by')->constrained('users'); // The creator
+        $table->string('invite_code')->unique();
+        $table->decimal('monthly_contribution', 10, 2)->default(500);
+        $table->foreignId('created_by')->constrained('users');
         $table->timestamps();
-        });
-    }
+    });
+
+    Schema::table('users', function (Blueprint $table) {
+        $table->foreignId('group_id')->nullable()->constrained('groups')->onDelete('set null');
+    });
+}
 
     /**
      * Reverse the migrations.

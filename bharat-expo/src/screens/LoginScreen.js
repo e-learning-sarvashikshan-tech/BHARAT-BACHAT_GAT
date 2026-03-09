@@ -1,5 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
-import React, { useState, useRef } from 'react'; // NEW: Imported useRef
+import { useTranslation } from 'react-i18next';
+import React, { useState, useRef } from 'react'; 
 import { 
   View, 
   Text, 
@@ -9,7 +10,7 @@ import {
   Alert, 
   ScrollView, 
   ActivityIndicator,
-  Platform,         
+  Platform,        
   StatusBar,
   KeyboardAvoidingView 
 } from 'react-native';
@@ -20,6 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import api from '../services/api';
 
 const LoginScreen = ({ navigation }) => {
+  const { t, i18n } = useTranslation(); // <-- TRANSLATION HOOK
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -30,11 +32,10 @@ const LoginScreen = ({ navigation }) => {
   
   const [otpSent, setOtpSent] = useState(false);
   const [otpInput, setOtpInput] = useState('');
-  const [language, setLanguage] = useState('en');
+  const [language, setLanguage] = useState(i18n.language || 'en'); // Default to current i18n language
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
 
-  // NEW: Create refs for each input field
   const nameRef = useRef(null);
   const phoneRef = useRef(null);
   const emailRef = useRef(null);
@@ -95,8 +96,6 @@ const LoginScreen = ({ navigation }) => {
         const response = await api.post('/send-otp', payload);
         setOtpSent(true);
         
-        // 1. REMOVED THE DEBUG OTP POPUP! 
-        // Now it just tells the user to check their email.
         Alert.alert("OTP Sent", "Please check your email for the 4-digit OTP.");
 
     } catch (error) {
@@ -105,14 +104,10 @@ const LoginScreen = ({ navigation }) => {
         } else {
             const serverMessage = error.response.data.message;
             
-            // 2. AUTO-REDIRECT TO REGISTRATION!
-            // If Laravel tells us this is a new user, we automatically open the registration form.
             if (serverMessage && serverMessage.includes('New user')) {
-                setIsRegistering(true); // Automatically open the Name, Phone, and Password fields
+                setIsRegistering(true); 
                 Alert.alert("Welcome!", "Looks like you are new here. Please fill in your details to create an account.");
-            } 
-            // Handle other normal errors (like duplicate phone number)
-            else {
+            } else {
                 Alert.alert("Notice", serverMessage || "Validation Error");
             }
         }
@@ -133,13 +128,10 @@ const LoginScreen = ({ navigation }) => {
      setLoading(true);
      setErrors({});
      try {
-        // NEW: Log exactly what is being sent to check for weird formatting
-        console.log("SENDING OTP PAYLOAD:", { email: email.trim().toLowerCase(), otp: Number(otpInput.trim()) });
-
         const response = await api.post('/verify-otp', {
-            email: email.trim().toLowerCase(), // NEW: Added toLowerCase()
-            otp: Number(otpInput.trim()),      // NEW: Wrapped in Number()
-            language: language
+            email: email.trim().toLowerCase(), 
+            otp: Number(otpInput.trim()),      
+            language: language // Sends selected language to backend!
         });
         await SecureStore.setItemAsync('userToken', response.data.access_token);
         navigation.replace('Dashboard');
@@ -175,26 +167,29 @@ const LoginScreen = ({ navigation }) => {
               <Text style={{fontSize: 40}}>💰</Text>
           </View>
           
-          <Text style={styles.title}>Bharat Bachat</Text>
+          {/* TRANSLATED TITLES */}
+          <Text style={styles.title}>{t('login.title', 'Bharat Bachat')}</Text>
           <Text style={styles.subtitle}>
-              {isRegistering ? "Create your account" : "Manage your Bachat Gat"}
+              {isRegistering 
+                ? t('login.subtitleRegister', 'Create your account') 
+                : t('login.subtitleLogin', 'Manage your Bachat Gat')}
           </Text>
 
           {/* REGISTRATION SECTION */}
           {isRegistering && !otpSent && (
             <>
               <View style={styles.inputContainer}>
-                <Text style={styles.label}>Full Name</Text>
+                <Text style={styles.label}>{t('login.fullName', 'Full Name')}</Text>
                 <View style={[styles.iconInputRow, errors.name && styles.errorBorder]}>
                   <Ionicons name="person-outline" size={20} color={errors.name ? "#dc3545" : "#888"} />
                   <TextInput 
-                    ref={nameRef} // Assigned Ref
+                    ref={nameRef}
                     style={styles.input} 
                     placeholder="Sanket Dhamne" 
                     value={name} 
                     onChangeText={(text) => { setName(text); setErrors({...errors, name: null}); }} 
-                    returnKeyType="next" // Shows 'Next' on keyboard
-                    onSubmitEditing={() => phoneRef.current?.focus()} // Jumps to Phone
+                    returnKeyType="next"
+                    onSubmitEditing={() => phoneRef.current?.focus()} 
                     blurOnSubmit={false}
                   />
                 </View>
@@ -202,11 +197,11 @@ const LoginScreen = ({ navigation }) => {
               </View>
 
               <View style={styles.inputContainer}>
-                <Text style={styles.label}>Mobile Number</Text>
+                <Text style={styles.label}>{t('login.mobileNumber', 'Mobile Number')}</Text>
                 <View style={[styles.iconInputRow, errors.phone && styles.errorBorder]}>
                   <Ionicons name="call-outline" size={20} color={errors.phone ? "#dc3545" : "#888"} />
                   <TextInput 
-                    ref={phoneRef} // Assigned Ref
+                    ref={phoneRef}
                     style={styles.input} 
                     placeholder="10 Digits" 
                     value={phone} 
@@ -214,7 +209,7 @@ const LoginScreen = ({ navigation }) => {
                     keyboardType="numeric" 
                     maxLength={10} 
                     returnKeyType="next"
-                    onSubmitEditing={() => emailRef.current?.focus()} // Jumps to Email
+                    onSubmitEditing={() => emailRef.current?.focus()} 
                     blurOnSubmit={false}
                   />
                 </View>
@@ -225,11 +220,11 @@ const LoginScreen = ({ navigation }) => {
 
           {/* EMAIL SECTION */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Email Address</Text>
+            <Text style={styles.label}>{t('login.emailLabel', 'Email Address')}</Text>
             <View style={[styles.iconInputRow, errors.email && styles.errorBorder]}>
               <Ionicons name="mail-outline" size={20} color={errors.email ? "#dc3545" : "#888"} />
               <TextInput 
-                ref={emailRef} // Assigned Ref
+                ref={emailRef}
                 style={styles.input} 
                 placeholder="email@example.com" 
                 value={email} 
@@ -240,9 +235,9 @@ const LoginScreen = ({ navigation }) => {
                 returnKeyType={(isRegistering || usePasswordLogin) ? "next" : "done"}
                 onSubmitEditing={() => {
                   if (isRegistering || usePasswordLogin) {
-                    passwordRef.current?.focus(); // Jump to Password if needed
+                    passwordRef.current?.focus(); 
                   } else {
-                    handleSendOtp(); // Or submit if it's just OTP login
+                    handleSendOtp(); 
                   }
                 }}
                 blurOnSubmit={!(isRegistering || usePasswordLogin)}
@@ -254,32 +249,42 @@ const LoginScreen = ({ navigation }) => {
           {/* PASSWORD SECTION */}
           {(isRegistering || usePasswordLogin) && !otpSent && (
             <View style={styles.inputContainer}>
-                <Text style={styles.label}>{isRegistering ? "Set Password" : "Password"}</Text>
+                <Text style={styles.label}>
+                  {isRegistering ? t('login.setPassword', 'Set Password') : t('login.password', 'Password')}
+                </Text>
                 <View style={[styles.iconInputRow, errors.password && styles.errorBorder]}>
                   <Ionicons name="lock-closed-outline" size={20} color={errors.password ? "#dc3545" : "#888"} />
                   <TextInput 
-                    ref={passwordRef} // Assigned Ref
+                    ref={passwordRef}
                     style={styles.input} 
                     placeholder="********" 
                     value={password} 
                     onChangeText={(text) => { setPassword(text); setErrors({...errors, password: null}); }} 
                     secureTextEntry 
                     returnKeyType="done"
-                    onSubmitEditing={isRegistering ? handleSendOtp : handlePasswordLogin} // Submit form when done
+                    onSubmitEditing={isRegistering ? handleSendOtp : handlePasswordLogin} 
                   />
                 </View>
                 {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
             </View>
           )}
 
-          {/* LANGUAGE SELECTION */}
+          {/* INSTANT LANGUAGE SELECTION */}
           {!otpSent && !isRegistering && !usePasswordLogin && (
             <View style={styles.inputContainer}>
-                <Text style={styles.label}>Language</Text>
+                <Text style={styles.label}>{t('login.language', 'Language')}</Text>
                 <View style={styles.pickerWrapper}>
-                    <Picker selectedValue={language} onValueChange={(itemValue) => setLanguage(itemValue)} style={styles.picker}>
+                    <Picker 
+                      selectedValue={language} 
+                      onValueChange={(itemValue) => {
+                        setLanguage(itemValue);
+                        i18n.changeLanguage(itemValue); // <-- INSTANTLY TRANSLATES THE UI
+                      }} 
+                      style={styles.picker}
+                    >
                         <Picker.Item label="English" value="en" />
                         <Picker.Item label="Marathi (मराठी)" value="mr" />
+                        <Picker.Item label="Hindi (हिंदी)" value="hi" />
                     </Picker>
                 </View>
             </View>
@@ -288,7 +293,7 @@ const LoginScreen = ({ navigation }) => {
           {/* OTP INPUT SECTION */}
           {otpSent && (
              <View style={styles.inputContainer}>
-                <Text style={styles.label}>Enter 4-Digit OTP</Text>
+                <Text style={styles.label}>{t('login.enterOtp', 'Enter 4-Digit OTP')}</Text>
                 <TextInput 
                   style={[styles.otpInput, errors.otpInput && styles.errorBorder]} 
                   placeholder="0 0 0 0" 
@@ -297,7 +302,7 @@ const LoginScreen = ({ navigation }) => {
                   keyboardType="number-pad" 
                   maxLength={4}
                   returnKeyType="done"
-                  onSubmitEditing={handleVerifyOtp} // Submit OTP when done 
+                  onSubmitEditing={handleVerifyOtp} 
                 />
                 {errors.otpInput && <Text style={[styles.errorText, {textAlign: 'center'}]}>{errors.otpInput}</Text>}
            </View>
@@ -310,7 +315,9 @@ const LoginScreen = ({ navigation }) => {
           >
             {loading ? <ActivityIndicator color="#fff" /> : (
                 <Text style={styles.buttonText}>
-                    {otpSent ? "Verify & Login" : (usePasswordLogin ? "Login Now" : "Get OTP")}
+                    {otpSent 
+                      ? t('login.btnVerify', 'Verify & Login') 
+                      : (usePasswordLogin ? t('login.btnLogin', 'Login Now') : t('login.btnGetOtp', 'Get OTP'))}
                 </Text>
             )}
           </TouchableOpacity>
@@ -320,14 +327,18 @@ const LoginScreen = ({ navigation }) => {
             <View style={styles.footer}>
                 <TouchableOpacity onPress={() => toggleMode('register')}>
                     <Text style={styles.toggleText}>
-                        {isRegistering ? "Already have an account? Login" : "New User? Register Now"}
+                        {isRegistering 
+                          ? t('login.toggleLogin', 'Already have an account? Login') 
+                          : t('login.toggleRegister', 'New User? Register Now')}
                     </Text>
                 </TouchableOpacity>
 
                 {!isRegistering && (
                     <TouchableOpacity onPress={() => toggleMode('password')} style={{marginTop: 15}}>
                         <Text style={styles.secondaryToggle}>
-                            {usePasswordLogin ? "Login with OTP instead" : "Login with Password instead"}
+                            {usePasswordLogin 
+                              ? t('login.toggleOtp', 'Login with OTP instead') 
+                              : t('login.togglePassword', 'Login with Password instead')}
                         </Text>
                     </TouchableOpacity>
                 )}

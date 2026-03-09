@@ -1,124 +1,215 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, Alert, Modal, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from '@react-navigation/native';
-import { getMeetingMinutes, deleteMeetingMinute } from '../services/database';
+import api from '../services/api';
+import * as SecureStore from 'expo-secure-store';
 
-const MeetingHistoryScreen = ({ navigation }) => {
-  const [minutesList, setMinutesList] = useState([]);
+const MeetingHistoryScreen = ({ route, navigation }) => {
+  const { groupId, members = [] } = route.params; 
+  
   const [loading, setLoading] = useState(true);
+  const [historyData, setHistoryData] = useState([]); // Array of dates with attached records
+  
+  // Detail Modal States
+  const [detailModalVisible, setDetailModalVisible] = useState(false);
+  const [selectedRecord, setSelectedRecord] = useState(null);
 
-  const fetchMinutes = async () => {
-    setLoading(true);
-    const data = await getMeetingMinutes();
-    setMinutesList(data);
-    setLoading(false);
+  useEffect(() => {
+    fetchHistory();
+  }, []);
+
+  const fetchHistory = async () => {
+    try {
+      const token = await SecureStore.getItemAsync('userToken');
+      const response = await api.get(`/groups/${groupId}/history`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (response.data.status === 'success') {
+        setHistoryData(response.data.data); // The backend now sends a beautifully merged array!
+      }
+    } catch (error) {
+      console.error("Failed to fetch history:", error);
+      Alert.alert("Error", "Could not load past records.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchMinutes();
-    }, [])
+  const getMemberName = (id) => {
+    const member = members.find(m => m.id.toString() === id.toString());
+    return member ? member.name : `Member #${id}`;
+  };
+
+  const openDetails = (record) => {
+    setSelectedRecord(record);
+    setDetailModalVisible(true);
+  };
+
+  // UI: The main list of clickable dates
+  const renderDateCard = ({ item }) => (
+    <TouchableOpacity style={styles.dateCard} onPress={() => openDetails(item)}>
+      <View style={styles.dateCardLeft}>
+        <View style={styles.iconCircle}>
+          <Ionicons name="calendar" size={24} color="#2952a3" />
+        </View>
+        <View>
+          <Text style={styles.dateTitle}>Meeting on</Text>
+          <Text style={styles.dateValue}>{new Date(item.meeting_date).toDateString()}</Text>
+        </View>
+      </View>
+      <Ionicons name="chevron-forward" size={24} color="#ccc" />
+    </TouchableOpacity>
   );
 
-  const handleDelete = (id) => {
-    Alert.alert(
-      "Delete Record",
-      "Are you sure you want to permanently delete this meeting record?",
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Delete", 
-          style: "destructive", 
-          onPress: async () => {
-            const success = await deleteMeetingMinute(id);
-            if (success) {
-              fetchMinutes(); // Refresh the list after deleting
-            } else {
-              Alert.alert("Error", "Could not delete the record.");
-            }
-          } 
-        }
-      ]
+  // Helper to parse attendance inside the Modal
+  const renderAttendanceDetails = () => {
+    if (!selectedRecord || !selectedRecord.attendance_data) {
+      return <Text style={styles.missingText}>No attendance recorded for this date.</Text>;
+    }
+
+    const data = typeof selectedRecord.attendance_data === 'string' 
+      ? JSON.parse(selectedRecord.attendance_data) 
+      : selectedRecord.attendance_data;
+    
+    const presentIds = Object.keys(data || {}).filter(id => data[id] === 'present');
+    const absentIds = Object.keys(data || {}).filter(id => data[id] === 'absent');
+
+    return (
+      <View style={styles.detailCard}>
+        <View style={styles.detailCardHeader}>
+          <Ionicons name="people" size={20} color="#28a745" />
+          <Text style={styles.detailCardTitle}>Attendance Log</Text>
+        </View>
+        
+        <View style={styles.attendanceStats}>
+          <Text style={styles.presentText}>Present ({presentIds.length})</Text>
+          <Text style={styles.absentText}>Absent ({absentIds.length})</Text>
+        </View>
+
+        <View style={styles.namesSection}>
+          <Text style={styles.namesLabel}>Members Present:</Text>
+          <Text style={styles.namesList}>
+            {presentIds.length > 0 ? presentIds.map(id => getMemberName(id)).join(', ') : 'None'}
+          </Text>
+          
+          <Text style={[styles.namesLabel, { marginTop: 15 }]}>Members Absent:</Text>
+          <Text style={styles.namesList}>
+            {absentIds.length > 0 ? absentIds.map(id => getMemberName(id)).join(', ') : 'None'}
+          </Text>
+        </View>
+      </View>
     );
   };
 
-  const handleEdit = (item) => {
-    // Send the existing data to the input screen
-    navigation.navigate('MeetingMinutes', { editData: item });
-  };
-
-  const renderMinuteCard = ({ item }) => (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.cardTitle}>{item.title}</Text>
-          <Text style={styles.cardDate}>
-            {new Date(item.date).toLocaleDateString()}
-          </Text>
-        </View>
-        
-        {/* ACTION BUTTONS */}
-        <View style={styles.actionRow}>
-          <TouchableOpacity onPress={() => handleEdit(item)} style={styles.iconBtn}>
-            <Ionicons name="pencil-outline" size={20} color="#2952a3" />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => handleDelete(item.id)} style={styles.iconBtn}>
-            <Ionicons name="trash-outline" size={20} color="#dc3545" />
-          </TouchableOpacity>
-        </View>
-
-      </View>
-      <View style={styles.divider} />
-      <Text style={styles.cardContent}>{item.content}</Text>
-    </View>
-  );
-
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={28} color="#333" />
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Past Records</Text>
-        <View style={{ width: 28 }} />
+        <Text style={styles.headerTitle}>Meeting History</Text>
+        <View style={{ width: 24 }} />
       </View>
 
+      {/* Main List */}
       {loading ? (
-        <ActivityIndicator size="large" color="#2952a3" style={{ marginTop: 50 }} />
-      ) : minutesList.length === 0 ? (
-        <View style={styles.emptyContainer}>
-          <Ionicons name="document-text-outline" size={60} color="#ccc" />
-          <Text style={styles.emptyText}>No meeting records found.</Text>
+        <View style={styles.loaderContainer}>
+          <ActivityIndicator size="large" color="#2952a3" />
+          <Text style={{marginTop: 10, color: '#666'}}>Fetching records...</Text>
         </View>
       ) : (
         <FlatList
-          data={minutesList}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={renderMinuteCard}
-          contentContainerStyle={styles.listContent}
+          data={historyData}
+          keyExtractor={(item) => item.meeting_date}
+          renderItem={renderDateCard}
+          contentContainerStyle={styles.listContainer}
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>No meetings have been recorded yet.</Text>
+          }
         />
       )}
+
+      {/* THE DETAILS MODAL */}
+      <Modal visible={detailModalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setDetailModalVisible(false)}>
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setDetailModalVisible(false)} style={styles.closeButton}>
+              <Ionicons name="close" size={28} color="#333" />
+            </TouchableOpacity>
+            <View style={{alignItems: 'center'}}>
+              <Text style={styles.modalHeaderTitle}>Meeting Details</Text>
+              <Text style={styles.modalHeaderDate}>{selectedRecord ? new Date(selectedRecord.meeting_date).toDateString() : ''}</Text>
+            </View>
+            <View style={{width: 28}} />
+          </View>
+
+          <ScrollView style={styles.modalScroll}>
+            {/* 1. Minutes Section */}
+            <View style={styles.detailCard}>
+              <View style={styles.detailCardHeader}>
+                <Ionicons name="document-text" size={20} color="#2952a3" />
+                <Text style={styles.detailCardTitle}>Meeting Minutes</Text>
+              </View>
+              {selectedRecord?.minutes_text ? (
+                <Text style={styles.recordText}>{selectedRecord.minutes_text}</Text>
+              ) : (
+                <Text style={styles.missingText}>No minutes recorded for this date.</Text>
+              )}
+            </View>
+
+            {/* 2. Attendance Section */}
+            {renderAttendanceDetails()}
+            
+            <View style={{height: 40}}/>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8f9fa' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
+  container: { flex: 1, backgroundColor: '#f4f6f8' },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
   headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#333' },
-  listContent: { padding: 20 },
-  card: { backgroundColor: '#fff', padding: 20, borderRadius: 16, marginBottom: 15, elevation: 2 },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 },
-  cardTitle: { fontSize: 18, fontWeight: 'bold', color: '#2952a3', marginBottom: 4 },
-  cardDate: { fontSize: 12, color: '#888' },
-  actionRow: { flexDirection: 'row', marginLeft: 10 },
-  iconBtn: { padding: 5, marginLeft: 10, backgroundColor: '#f0f0f0', borderRadius: 8 },
-  divider: { height: 1, backgroundColor: '#f0f0f0', marginBottom: 10 },
-  cardContent: { fontSize: 15, color: '#444', lineHeight: 22 },
-  emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', marginTop: 50 },
-  emptyText: { marginTop: 15, fontSize: 16, color: '#888' }
+  backButton: { padding: 5 },
+  loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  listContainer: { padding: 15 },
+  emptyText: { textAlign: 'center', color: '#888', marginTop: 50, fontSize: 16 },
+
+  // Main List Styles
+  dateCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fff', padding: 15, borderRadius: 12, marginBottom: 12, elevation: 1 },
+  dateCardLeft: { flexDirection: 'row', alignItems: 'center' },
+  iconCircle: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#eef2ff', justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+  dateTitle: { fontSize: 12, color: '#888', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  dateValue: { fontSize: 16, fontWeight: 'bold', color: '#333', marginTop: 2 },
+
+  // Modal Styles
+  modalContainer: { flex: 1, backgroundColor: '#f4f6f8' },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 15, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
+  closeButton: { padding: 5 },
+  modalHeaderTitle: { fontSize: 16, fontWeight: 'bold', color: '#333' },
+  modalHeaderDate: { fontSize: 13, color: '#2952a3', fontWeight: 'bold', marginTop: 2 },
+  modalScroll: { padding: 15 },
+
+  // Detail Cards inside Modal
+  detailCard: { backgroundColor: '#fff', padding: 20, borderRadius: 16, marginBottom: 15, elevation: 2 },
+  detailCardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 10 },
+  detailCardTitle: { fontSize: 16, fontWeight: 'bold', color: '#333', marginLeft: 10 },
+  recordText: { fontSize: 15, color: '#444', lineHeight: 24 },
+  missingText: { fontSize: 14, color: '#888', fontStyle: 'italic' },
+
+  // Attendance Specific Styles
+  attendanceStats: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15, paddingBottom: 15, borderBottomWidth: 1, borderBottomColor: '#eee' },
+  presentText: { fontSize: 16, color: '#28a745', fontWeight: 'bold' },
+  absentText: { fontSize: 16, color: '#dc3545', fontWeight: 'bold' },
+  namesSection: { marginTop: 5 },
+  namesLabel: { fontSize: 13, fontWeight: 'bold', color: '#555', marginBottom: 4 },
+  namesList: { fontSize: 14, color: '#777', lineHeight: 22 },
 });
 
 export default MeetingHistoryScreen;

@@ -1,112 +1,146 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next'; // <-- IMPORTED TRANSLATION
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ActivityIndicator, Alert, Platform, KeyboardAvoidingView, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { saveMeetingMinutes, updateMeetingMinute } from '../services/database';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import { saveOfflineMinutes } from '../services/database';
 
-// Notice we added `route` here to receive the parameters from the history screen
 const MeetingMinutesScreen = ({ route, navigation }) => {
-  const editData = route.params?.editData || null;
+  const { t } = useTranslation(); // <-- INITIALIZED HOOK
+  const { groupId, role } = route.params || {}; 
+  const isAdmin = role === 'admin';
 
-  // If editData exists, pre-fill the inputs. Otherwise, leave them blank.
-  const [title, setTitle] = useState(editData ? editData.title : '');
-  const [content, setContent] = useState(editData ? editData.content : '');
-  const [isSaving, setIsSaving] = useState(false);
+  const [meetingDate, setMeetingDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [minutesText, setMinutesText] = useState('');
+  const [saving, setSaving] = useState(false);
 
-  const handleSave = async () => {
-    if (!title.trim() || !content.trim()) {
-      Alert.alert("Required", "Please provide a title and meeting notes.");
+  const handleDateChange = (event, selectedDate) => {
+    const currentDate = selectedDate || meetingDate;
+    setShowDatePicker(Platform.OS === 'ios');
+    setMeetingDate(currentDate);
+  };
+
+  const handleSaveMinutes = async () => {
+    if (!groupId) {
+      Alert.alert(t('common.error', 'Error'), "No Group ID found. Please open from a specific Group.");
+      return;
+    }
+    if (minutesText.trim().length === 0) {
+      Alert.alert(t('common.warning', 'Validation Error'), "Please write the meeting minutes before saving.");
       return;
     }
 
-    setIsSaving(true);
+    setSaving(true);
+    
     try {
-      let success = false;
-      
-      if (editData) {
-        // We are updating an existing record
-        success = await updateMeetingMinute(editData.id, title, content);
-      } else {
-        // We are saving a brand new record
-        success = await saveMeetingMinutes(title, content);
-      }
+      const dateString = meetingDate.toISOString().split('T')[0];
+      await saveOfflineMinutes(groupId, dateString, minutesText);
 
-      if (success) {
-        Alert.alert("Success", editData ? "Minutes updated!" : "Minutes saved locally!");
-        navigation.goBack();
-      } else {
-        Alert.alert("Error", "Failed to save to database.");
-      }
+      Alert.alert(
+        "Records Saved Offline", 
+        `Meeting minutes for ${meetingDate.toDateString()} have been securely recorded in your vault.`,
+        [{ text: "OK", onPress: () => navigation.goBack() }]
+      );
     } catch (error) {
-      console.error(error);
-      Alert.alert("Error", "An unexpected error occurred.");
+      Alert.alert(t('common.error', 'Error'), "Failed to save minutes locally.");
     } finally {
-      setIsSaving(false);
+      setSaving(false);
     }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={28} color="#333" />
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{editData ? "Edit Minutes" : "New Meeting"}</Text>
-        
-        {/* Only show the history icon if we are making a NEW record */}
-        {!editData && (
-          <TouchableOpacity onPress={() => navigation.navigate('MeetingHistory')}>
-            <Ionicons name="time-outline" size={28} color="#2952a3" />
-          </TouchableOpacity>
-        )}
-        {editData && <View style={{width: 28}} />}
+        <Text style={styles.headerTitle}>{t('minutes.title', 'Meeting Records')}</Text>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.label}>Meeting Agenda / Title</Text>
-        <TextInput
-          style={styles.titleInput}
-          placeholder="e.g., Monthly Savings Review"
-          value={title}
-          onChangeText={setTitle}
-        />
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }} 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          
+          <TouchableOpacity 
+            style={styles.meetingCard} 
+            onPress={() => setShowDatePicker(true)}
+            disabled={!isAdmin}
+          >
+            <Ionicons name="calendar" size={24} color="#2952a3" />
+            <View style={{ marginLeft: 15, flex: 1 }}>
+              <Text style={styles.meetingLabel}>{isAdmin ? t('minutes.date', 'Meeting Date') + ' (Tap to Edit)' : t('minutes.date', 'Meeting Date')}</Text>
+              <Text style={styles.meetingDate}>{meetingDate.toDateString()}</Text>
+            </View>
+            {isAdmin && <Ionicons name="pencil" size={20} color="#888" />}
+          </TouchableOpacity>
 
-        <Text style={styles.label}>Decisions & Minutes</Text>
-        <TextInput
-          style={styles.contentInput}
-          placeholder="Summarize the discussion here..."
-          value={content}
-          onChangeText={setContent}
-          multiline
-          numberOfLines={10}
-          textAlignVertical="top"
-        />
+          {showDatePicker && (
+            <DateTimePicker
+              value={meetingDate}
+              mode="date"
+              display="default"
+              onChange={handleDateChange}
+              maximumDate={new Date()} 
+            />
+          )}
 
-        <TouchableOpacity 
-          style={[styles.saveButton, isSaving && { opacity: 0.7 }]} 
-          onPress={handleSave}
-          disabled={isSaving}
-        >
-          <Ionicons name={editData ? "checkmark-circle-outline" : "cloud-upload-outline"} size={20} color="#fff" style={{marginRight: 10}} />
-          <Text style={styles.saveButtonText}>
-            {isSaving ? 'Saving...' : (editData ? 'Update Minutes' : 'Save Minutes')}
-          </Text>
-        </TouchableOpacity>
-      </ScrollView>
+          <View style={styles.notepadContainer}>
+            <Text style={styles.notepadHeader}>{t('minutes.notes', 'Official Minutes & Decisions')}</Text>
+            <Text style={styles.notepadSubHeader}>{t('minutes.subHeader', 'Record who requested loans, major group decisions, and any issues discussed.')}</Text>
+            
+            <TextInput
+              style={[styles.textInput, !isAdmin && { backgroundColor: '#f0f0f0', color: '#666' }]}
+              placeholder={isAdmin ? "e.g., Sanket requested a loan of ₹5000..." : t('minutes.noMinutes', "No minutes recorded yet.")}
+              placeholderTextColor="#a0a0a0"
+              multiline={true}
+              numberOfLines={12}
+              value={minutesText}
+              onChangeText={setMinutesText}
+              textAlignVertical="top" 
+              editable={isAdmin} 
+            />
+          </View>
+
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      {isAdmin && (
+        <View style={styles.footer}>
+          <TouchableOpacity 
+            style={[styles.saveButton, saving && styles.disabledButton]} 
+            onPress={handleSaveMinutes}
+            disabled={saving}
+          >
+            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>{t('minutes.saveBtn', 'Save Official Record')}</Text>}
+          </TouchableOpacity>
+        </View>
+      )}
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8f9fa' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
+  container: { flex: 1, backgroundColor: '#f4f6f8' },
+  header: { flexDirection: 'row', alignItems: 'center', padding: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
+  backButton: { marginRight: 15 },
   headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#333' },
-  scrollContent: { padding: 20 },
-  label: { fontSize: 14, fontWeight: '600', color: '#666', marginBottom: 8, marginLeft: 4 },
-  titleInput: { backgroundColor: '#fff', padding: 15, borderRadius: 12, fontSize: 16, marginBottom: 25, borderWidth: 1, borderColor: '#ddd' },
-  contentInput: { backgroundColor: '#fff', padding: 15, borderRadius: 12, fontSize: 16, minHeight: 200, borderWidth: 1, borderColor: '#ddd' },
-  saveButton: { backgroundColor: '#2952a3', flexDirection: 'row', marginTop: 30, padding: 18, borderRadius: 12, justifyContent: 'center', alignItems: 'center', elevation: 2 },
-  saveButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' }
+  content: { padding: 20 },
+  meetingCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 15, borderRadius: 12, borderWidth: 1, borderColor: '#d3e0f5', elevation: 1, marginBottom: 20 },
+  meetingLabel: { fontSize: 12, color: '#888', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 },
+  meetingDate: { fontSize: 16, fontWeight: 'bold', color: '#2952a3' },
+  notepadContainer: { backgroundColor: '#fff', borderRadius: 16, padding: 15, elevation: 1 },
+  notepadHeader: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 5 },
+  notepadSubHeader: { fontSize: 12, color: '#888', marginBottom: 15, lineHeight: 18 },
+  textInput: { backgroundColor: '#fcfcfc', borderWidth: 1, borderColor: '#eee', borderRadius: 12, padding: 15, fontSize: 15, color: '#333', minHeight: 250, lineHeight: 22 },
+  footer: { padding: 20, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#eee' },
+  saveButton: { backgroundColor: '#2952a3', padding: 16, borderRadius: 12, alignItems: 'center' },
+  disabledButton: { backgroundColor: '#8b9fcb' },
+  saveButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' }
 });
 
 export default MeetingMinutesScreen;
