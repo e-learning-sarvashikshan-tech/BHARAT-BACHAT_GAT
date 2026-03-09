@@ -35,11 +35,11 @@ const AddSavingsScreen = ({ route, navigation }) => {
 
   const handleBatchSubmit = async () => {
     if (selectedUsers.size === 0) {
-      Alert.alert(t('common.error', 'Error'), t('addSavings.selectMember', "Please select at least one member."));
+      Alert.alert(t('common.error', 'Error'), t('alerts.selectMemberError', "Please select at least one member."));
       return;
     }
     if (!amount || isNaN(amount) || Number(amount) <= 0) {
-      Alert.alert(t('common.error', 'Error'), "Please enter a valid amount.");
+      Alert.alert(t('common.error', 'Error'), t('alerts.invalidAmountError', "Please enter a valid amount."));
       return;
     }
 
@@ -55,27 +55,27 @@ const AddSavingsScreen = ({ route, navigation }) => {
 
       if (response.data.status === 'success') {
         
-        // --- MULTILINGUAL VOICE ANNOUNCEMENT ---
-        let speechText = `Successfully deposited ${amount} rupees for ${selectedUsers.size} members.`;
+        // --- CLEAN MULTILINGUAL VOICE ANNOUNCEMENT ---
+        let speechText = `Deposit of ${amount} rupees is successful.`;
         let voiceLang = 'en-IN';
 
         if (i18n.language === 'mr') {
-            speechText = `${selectedUsers.size} सदस्यांसाठी ${amount} रुपये यशस्वीरित्या जमा झाले.`;
+            speechText = `${amount} रुपये यशस्वीरित्या जमा झाले.`;
             voiceLang = 'mr-IN';
         } else if (i18n.language === 'hi') {
-            speechText = `${selectedUsers.size} सदस्यों के लिए ${amount} रुपये सफलतापूर्वक जमा किए गए।`;
+            speechText = `${amount} रुपये सफलतापूर्वक जमा हो गए हैं।`;
             voiceLang = 'hi-IN';
         }
 
         Speech.speak(speechText, { language: voiceLang, rate: 0.85 });
         // ----------------------------------------
 
-        Alert.alert(t('common.success', 'Success'), response.data.message);
+        Alert.alert(t('common.success', 'Success'), response.data.message || t('alerts.depositSuccess', 'Deposits saved successfully!'));
         navigation.goBack(); 
       }
     } catch (error) {
       console.error(error);
-      const errorMessage = error.response?.data?.message || "Failed to save transactions. Check your connection.";
+      const errorMessage = error.response?.data?.message || t('alerts.depositFailed', "Failed to save transactions. Check your connection.");
       Alert.alert(t('common.error', 'Transaction Failed'), errorMessage);
     } finally {
       setLoading(false);
@@ -111,8 +111,6 @@ const AddSavingsScreen = ({ route, navigation }) => {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('addSavings.title', 'Deposit Funds')}</Text>
       </View>
-
-      {/* SECONDARY HEADER "Batch Deposit Savings" WAS REMOVED FROM HERE */}
 
       <View style={styles.inputSection}>
         <Text style={styles.label}>{t('addSavings.amountLabel', 'Deposit Amount (Per Member)')}</Text>

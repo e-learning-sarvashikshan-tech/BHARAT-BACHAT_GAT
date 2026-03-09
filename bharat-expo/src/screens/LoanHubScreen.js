@@ -59,11 +59,11 @@ const LoanHubScreen = ({ route, navigation }) => {
     try {
       const token = await SecureStore.getItemAsync('userToken');
       await api.post(`/group/${groupId}/loan/request`, { principal_amount: amount, duration_months: duration }, { headers: { Authorization: `Bearer ${token}` } });
-      Alert.alert(t('common.success', "Success"), t('loanHub.requestSuccess', "Loan request submitted!"));
+      Alert.alert(t('common.success', "Success"), t('alerts.loanRequested', "Loan request submitted!"));
       setActiveTab('pending'); 
       fetchLoans();
     } catch (error) {
-      Alert.alert(t('common.error', "Error"), error.response?.data?.message || t('loanHub.requestError', "Failed to request loan."));
+      Alert.alert(t('common.error', "Error"), error.response?.data?.message || t('alerts.loanRequestFailed', "Failed to request loan."));
     } finally {
       setSubmitting(false);
     }
@@ -77,7 +77,7 @@ const LoanHubScreen = ({ route, navigation }) => {
 
   const submitApproval = async () => {
     if (!customInterest || isNaN(customInterest) || Number(customInterest) < 0) {
-      return Alert.alert(t('common.error', "Error"), t('loanHub.invalidInterest', "Please enter a valid interest rate."));
+      return Alert.alert(t('common.error', "Error"), t('alerts.invalidInterest', "Please enter a valid interest rate."));
     }
 
     try {
@@ -103,41 +103,42 @@ const LoanHubScreen = ({ route, navigation }) => {
       Speech.speak(speechText, { language: voiceLang, rate: 0.85 });
       // ----------------------------------------------
 
-      Alert.alert(t('common.success', "Success"), t('loanHub.disburseSuccess', "Funds disbursed successfully!"));
+      Alert.alert(t('common.success', "Success"), t('alerts.loanApproved', "Funds disbursed successfully!"));
       setApproveModalVisible(false);
       setActiveTab('active');
       fetchLoans();
     } catch (error) {
-      Alert.alert(t('common.error', "Error"), error.response?.data?.message || t('loanHub.disburseError', "Failed to approve loan. Check group balance."));
+      Alert.alert(t('common.error', "Error"), error.response?.data?.message || t('alerts.loanApproveFailed', "Failed to approve loan. Check group balance."));
     }
   };
 
   const submitRejection = async () => {
-    if (!rejectionReason.trim()) return Alert.alert(t('common.error', "Error"), t('loanHub.reasonRequired', "Reason required."));
+    if (!rejectionReason.trim()) return Alert.alert(t('common.error', "Error"), t('alerts.reasonRequired', "Reason required."));
     try {
       const token = await SecureStore.getItemAsync('userToken');
       await api.post(`/group/${groupId}/loan/${rejectingLoanId}/reject`, { rejection_reason: rejectionReason }, { headers: { Authorization: `Bearer ${token}` } });
       setRejectModalVisible(false);
       setRejectionReason('');
+      Alert.alert(t('common.success', "Success"), t('alerts.loanRejected', "Loan rejected."));
       fetchLoans();
     } catch (error) {
-      Alert.alert(t('common.error', "Error"), t('loanHub.rejectError', "Failed to reject."));
+      Alert.alert(t('common.error', "Error"), t('alerts.loanRejectFailed', "Failed to reject."));
     }
   };
 
   const submitRepayment = async () => {
     if (!repayAmount || isNaN(repayAmount) || Number(repayAmount) <= 0) {
-      return Alert.alert(t('common.error', "Error"), t('loanHub.invalidAmount', "Enter a valid amount."));
+      return Alert.alert(t('common.error', "Error"), t('alerts.invalidAmountError', "Enter a valid amount."));
     }
     try {
       const token = await SecureStore.getItemAsync('userToken');
       await api.post(`/loan/${repayingLoanId}/repay`, { amount: Number(repayAmount) }, { headers: { Authorization: `Bearer ${token}` } });
-      Alert.alert(t('common.success', "Success"), t('loanHub.paymentSuccess', "Payment recorded successfully!"));
+      Alert.alert(t('common.success', "Success"), t('alerts.paymentSaved', "Payment recorded successfully!"));
       setRepayModalVisible(false);
       setRepayAmount('');
       fetchLoans();
     } catch (error) {
-      const errorMessage = error.response?.data?.message || t('loanHub.paymentError', "Repayment failed.");
+      const errorMessage = error.response?.data?.message || t('alerts.paymentFailed', "Repayment failed.");
       Alert.alert(t('common.error', "Error"), errorMessage);
     }
   };
@@ -217,7 +218,7 @@ const LoanHubScreen = ({ route, navigation }) => {
         {isAdmin && loan.status === 'active' && (
           <TouchableOpacity style={styles.repayBtn} onPress={() => { setRepayingLoanId(loan.id); setRepayModalVisible(true); }}>
             <Ionicons name="card-outline" size={18} color="#fff" style={{marginRight: 8}} />
-            <Text style={styles.repayBtnText}>{t('loanHub.payEmiBtn', 'Record Repayment')}</Text>
+            <Text style={styles.repayBtnText}>{t('loanHub.recordRepayment', 'Record Repayment')}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -302,7 +303,7 @@ const LoanHubScreen = ({ route, navigation }) => {
       <Modal visible={rejectModalVisible} transparent={true} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{t('loanHub.rejectionReasonTitle', 'Rejection Reason')}</Text>
+            <Text style={styles.modalTitle}>{t('loanHub.reason', 'Reason')}</Text>
             <TextInput style={styles.modalInput} multiline onChangeText={setRejectionReason} placeholder={t('loanHub.reasonPlaceholder', 'Explain why...')} />
             <View style={styles.modalActionRow}>
               <TouchableOpacity onPress={() => setRejectModalVisible(false)} style={{padding: 10}}><Text>{t('common.cancel', 'Cancel')}</Text></TouchableOpacity>

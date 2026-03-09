@@ -8,7 +8,7 @@ import {
   ScrollView, 
   ActivityIndicator, 
   Alert,
-  Modal // <-- IMPORTED MODAL FOR LANGUAGE SWITCHER
+  Modal 
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -192,7 +192,11 @@ const ProfileScreen = ({ navigation }) => {
         <View style={styles.menuContainer}>
           <Text style={styles.menuHeader}>Account Settings</Text>
 
-          <TouchableOpacity style={styles.menuItem} onPress={() => Alert.alert("Coming Soon", "Edit Profile feature will be available in the next update.")}>
+          {/* DYNAMIC PERSONAL DETAILS MODAL (Replaces 'Coming Soon') */}
+          <TouchableOpacity style={styles.menuItem} onPress={() => {
+            const details = `${t('login.fullName', 'Full Name')}: ${userData?.name || '-'}\n${t('login.mobileNumber', 'Mobile Number')}: ${userData?.phone || '-'}\n${t('login.emailLabel', 'Email Address')}: ${userData?.email || '-'}`;
+            Alert.alert(t('profile.personalDetails', 'Personal Details'), details);
+          }}>
             <View style={styles.menuIconBox}><Ionicons name="person-outline" size={20} color="#2952a3" /></View>
             <Text style={styles.menuText}>{t('profile.personalDetails', 'Personal Details')}</Text>
             <Ionicons name="chevron-forward" size={20} color="#ccc" />
@@ -208,7 +212,8 @@ const ProfileScreen = ({ navigation }) => {
             <Ionicons name="chevron-forward" size={20} color="#ccc" />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.menuItem} onPress={() => Alert.alert("Support", "Please contact your Gat Adhyaksha for immediate assistance.")}>
+          {/* TRANSLATED HELP & SUPPORT */}
+          <TouchableOpacity style={styles.menuItem} onPress={() => Alert.alert(t('profile.helpSupport', 'Help & Support'), t('alerts.helpMessage', 'Please contact your Gat Pramukh for immediate assistance.'))}>
             <View style={styles.menuIconBox}><Ionicons name="help-circle-outline" size={20} color="#2952a3" /></View>
             <Text style={styles.menuText}>{t('profile.helpSupport', 'Help & Support')}</Text>
             <Ionicons name="chevron-forward" size={20} color="#ccc" />
@@ -291,7 +296,7 @@ const styles = StyleSheet.create({
   menuHeader: { fontSize: 14, fontWeight: 'bold', color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginLeft: 20, marginBottom: 10, marginTop: 10 },
   menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
   menuIconBox: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#eef2f9', justifyContent: 'center', alignItems: 'center', marginRight: 15 },
-  menuText: { fontSize: 16, color: '#333', fontWeight: '500' },
+  menuText: { flex: 1, fontSize: 16, color: '#333', fontWeight: '500' },
 
   bottomSection: { marginTop: 30, paddingHorizontal: 20, alignItems: 'center' },
   logoutButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffe6e6', width: '100%', paddingVertical: 15, borderRadius: 12, justifyContent: 'center', borderWidth: 1, borderColor: '#fad2cf' },
