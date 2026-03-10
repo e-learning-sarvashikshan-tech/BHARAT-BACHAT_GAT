@@ -64,4 +64,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Meeting Minutes & Attendance Sync
     Route::post('/meetings/sync', [MeetingController::class, 'syncMinutes']);
 
+    // In App Notificatons
+    Route::get('/notifications', [App\Http\Controllers\Api\NotificationController::class, 'getNotifications']);
+    Route::post('/notifications/read', [App\Http\Controllers\Api\NotificationController::class, 'markAsRead']);
+
 });

@@ -4,6 +4,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import * as SecureStore from 'expo-secure-store';
 import { View, ActivityIndicator } from 'react-native';
 import './src/i18n'; 
+
 // Screen Imports
 import LoginScreen from './src/screens/LoginScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
@@ -22,27 +23,34 @@ import AddSavingsScreen from './src/screens/AddSavingsScreen';
 import EditTransactionScreen from './src/screens/EditTransactionScreen';
 import LoanHubScreen from './src/screens/LoanHubScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
+import NotificationsScreen from './src/screens/NotificationsScreen';
 import PortfolioScreen from './src/screens/PortfolioScreen';
 import { initDatabase } from './src/services/database';
 
 const Stack = createStackNavigator();
 
 export default function App() {
-  // FIXED: Removed the <string | null> to clear the linter error
-  const [initialRoute, setInitialRoute] = useState<string | null>(null);
+  // THE FIX: Initializing with an empty string ('') instead of null.
+  // This satisfies BOTH standard JavaScript and strict TypeScript!
+  const [initialRoute, setInitialRoute] = useState('');
 
   useEffect(() => {
     const checkToken = async () => {
-      initDatabase();
-      // Look inside the secure vault for our token
-      const token = await SecureStore.getItemAsync('userToken');
-      // If a token is found, go to Dashboard. Otherwise, go to Login.
-      setInitialRoute(token ? 'Dashboard' : 'Login');
+      try {
+        initDatabase();
+        // Look inside the secure vault for our token
+        const token = await SecureStore.getItemAsync('userToken');
+        // If a token is found, go to Dashboard. Otherwise, go to Login.
+        setInitialRoute(token ? 'Dashboard' : 'Login');
+      } catch (error) {
+        // Fallback safety: If vault fails, force to Login
+        setInitialRoute('Login');
+      }
     };
     checkToken();
   }, []);
 
-  // Show a loading spinner while checking the vault
+  // Show a loading spinner while checking the vault (empty string triggers this)
   if (!initialRoute) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -55,7 +63,9 @@ export default function App() {
     <NavigationContainer>
       <Stack.Navigator initialRouteName={initialRoute}>
         <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
-        <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ title: 'Bharat Bachat', headerLeft: () => null }} />
+        
+        <Stack.Screen name="Dashboard" component={DashboardScreen} options={{ headerShown: false }} />
+        
         <Stack.Screen name="GroupsHub" component={GroupsHubScreen} options={{ headerShown: false }} />
         <Stack.Screen name="CreateGroup" component={CreateGroupScreen} options={{ title: 'Create Group' }} />
         <Stack.Screen name="JoinGroup" component={JoinGroupScreen} options={{ headerShown: false }} />
@@ -71,11 +81,12 @@ export default function App() {
         
         {/* FINANCIAL ROUTES */}
         <Stack.Screen name="Ledger" component={LedgerScreen} options={{ headerShown: false }} />
-        <Stack.Screen name="AddSavings" component={AddSavingsScreen} options={{ title: 'Deposit Funds' }} />
+        <Stack.Screen name="AddSavings" component={AddSavingsScreen} options={{ headerShown: false }} />
         <Stack.Screen name="EditTransaction" component={EditTransactionScreen} options={{ title: 'Edit Transaction' }} />
+        
         <Stack.Screen name="LoanHub" component={LoanHubScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Portfolio" component={PortfolioScreen} options={{ headerShown: false }} />
-        
+        <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Profile" component={ProfileScreen} options={{ headerShown: false }} />
       </Stack.Navigator>
     </NavigationContainer>
