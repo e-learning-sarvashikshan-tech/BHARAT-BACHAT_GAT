@@ -1,22 +1,24 @@
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next'; 
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, TextInput, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, TextInput, Modal, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import * as SecureStore from 'expo-secure-store';
 import Slider from '@react-native-community/slider';
-import * as Speech from 'expo-speech'; // <-- 1. ADDED SPEECH LIBRARY
+import * as Speech from 'expo-speech'; 
 import api from '../services/api';
 
 const LoanHubScreen = ({ route, navigation }) => {
-  const { t, i18n } = useTranslation(); // <-- 2. EXTRACTED i18n FOR VOICE LOGIC
+  const { t, i18n } = useTranslation(); 
   const { groupId, role, groupDetails } = route.params;
   const isAdmin = role === 'admin';
 
   const [loans, setLoans] = useState({ pending: [], active: [], completed: [], rejected: [] });
   const [activeTab, setActiveTab] = useState('pending'); 
+  
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   
   const maxGroupLoan = parseFloat(groupDetails?.max_loan_amount) || 50000;
@@ -24,7 +26,6 @@ const LoanHubScreen = ({ route, navigation }) => {
   const [amount, setAmount] = useState(5000);
   const [duration, setDuration] = useState(6);
 
-  // Modals State
   const [rejectModalVisible, setRejectModalVisible] = useState(false);
   const [rejectingLoanId, setRejectingLoanId] = useState(null);
   const [rejectionReason, setRejectionReason] = useState('');
@@ -32,15 +33,16 @@ const LoanHubScreen = ({ route, navigation }) => {
   const [repayModalVisible, setRepayModalVisible] = useState(false);
   const [repayingLoanId, setRepayingLoanId] = useState(null);
   const [repayAmount, setRepayAmount] = useState('');
+  // --- NEW: STATE TO HOLD THE MAXIMUM ALLOWED PAYMENT ---
+  const [repayMaxAmount, setRepayMaxAmount] = useState(0);
 
-  // Admin Approval Modal State
   const [approveModalVisible, setApproveModalVisible] = useState(false);
   const [approvingLoan, setApprovingLoan] = useState(null);
   const [customInterest, setCustomInterest] = useState('');
 
   const monthlyEMI = (amount + (amount * (defaultGroupInterest / 100) * duration)) / duration;
 
-  const fetchLoans = async () => {
+  const fetchLoans = useCallback(async () => {
     try {
       const token = await SecureStore.getItemAsync('userToken');
       const response = await api.get(`/group/${groupId}/loans`, { headers: { Authorization: `Bearer ${token}` } });
@@ -50,9 +52,15 @@ const LoanHubScreen = ({ route, navigation }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [groupId]);
 
-  useFocusEffect(useCallback(() => { fetchLoans(); }, [groupId]));
+  useFocusEffect(useCallback(() => { fetchLoans(); }, [fetchLoans]));
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchLoans();
+    setRefreshing(false);
+  }, [fetchLoans]);
 
   const handleRequestLoan = async () => {
     setSubmitting(true);
@@ -87,7 +95,6 @@ const LoanHubScreen = ({ route, navigation }) => {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      // --- 3. THE MULTILINGUAL VOICE ANNOUNCEMENT ---
       const approvedAmount = approvingLoan?.principal_amount;
       let speechText = `Loan of ${approvedAmount} rupees has been approved.`;
       let voiceLang = 'en-IN';
@@ -101,7 +108,6 @@ const LoanHubScreen = ({ route, navigation }) => {
       }
 
       Speech.speak(speechText, { language: voiceLang, rate: 0.85 });
-      // ----------------------------------------------
 
       Alert.alert(t('common.success', "Success"), t('alerts.loanApproved', "Funds disbursed successfully!"));
       setApproveModalVisible(false);
@@ -126,17 +132,28 @@ const LoanHubScreen = ({ route, navigation }) => {
     }
   };
 
+  // --- NEW: SMART REPAYMENT SUBMISSION ---
   const submitRepayment = async () => {
-    if (!repayAmount || isNaN(repayAmount) || Number(repayAmount) <= 0) {
+    const numAmount = Number(repayAmount);
+    if (!repayAmount || isNaN(numAmount) || numAmount <= 0) {
       return Alert.alert(t('common.error', "Error"), t('alerts.invalidAmountError', "Enter a valid amount."));
     }
+
+    // STRICT VALIDATION: Cannot pay more than what is pending!
+    if (numAmount > Math.ceil(repayMaxAmount)) {
+      return Alert.alert(
+        t('common.error', "Error"), 
+        `Payment cannot exceed the pending balance of ₹${Math.ceil(repayMaxAmount)}`
+      );
+    }
+
     try {
       const token = await SecureStore.getItemAsync('userToken');
-      await api.post(`/loan/${repayingLoanId}/repay`, { amount: Number(repayAmount) }, { headers: { Authorization: `Bearer ${token}` } });
+      await api.post(`/loan/${repayingLoanId}/repay`, { amount: numAmount }, { headers: { Authorization: `Bearer ${token}` } });
       Alert.alert(t('common.success', "Success"), t('alerts.paymentSaved', "Payment recorded successfully!"));
       setRepayModalVisible(false);
       setRepayAmount('');
-      fetchLoans();
+      fetchLoans(); 
     } catch (error) {
       const errorMessage = error.response?.data?.message || t('alerts.paymentFailed', "Repayment failed.");
       Alert.alert(t('common.error', "Error"), errorMessage);
@@ -152,6 +169,8 @@ const LoanHubScreen = ({ route, navigation }) => {
     const totalDue = principal + (principal * (rate / 100) * months);
     const emiAmount = totalDue / months;
     
+    // Calculate precise bounds
+    const pendingBalance = totalDue - amountPaid;
     const fullEmisPaid = Math.floor(amountPaid / emiAmount);
     const progress = Math.min((amountPaid / totalDue) * 100, 100);
 
@@ -180,9 +199,9 @@ const LoanHubScreen = ({ route, navigation }) => {
         {activeTab === 'active' && (
           <View style={styles.emiTrackerContainer}>
             <View style={styles.emiHeader}>
-              <Text style={styles.emiAmountText}>{t('loanHub.emi', 'EMI')}: ₹{Math.ceil(emiAmount)} <Text style={{fontSize: 12, fontWeight: 'normal'}}>/mo</Text></Text>
+              <Text style={styles.emiAmountText}>{t('loanHub.estEmi', 'EMI')}: ₹{Math.ceil(emiAmount)} <Text style={{fontSize: 12, fontWeight: 'normal'}}>/mo</Text></Text>
               <View style={styles.emiPill}>
-                 <Text style={styles.emiPillText}>{fullEmisPaid} of {months} {t('loanHub.paid', 'Paid')}</Text>
+                 <Text style={styles.emiPillText}>{fullEmisPaid} / {months} {t('groupDetails.statusPaid', 'Paid')}</Text>
               </View>
             </View>
             
@@ -191,7 +210,7 @@ const LoanHubScreen = ({ route, navigation }) => {
             </View>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 5 }}>
               <Text style={styles.progressText}>{t('loanHub.totalPaid', 'Total Paid')}: ₹{amountPaid}</Text>
-              <Text style={styles.progressText}>{t('loanHub.totalDue', 'Total Due')}: ₹{Math.ceil(totalDue)}</Text>
+              <Text style={styles.progressText}>{t('loanHub.totalDue', 'Pending')}: ₹{Math.ceil(pendingBalance)}</Text>
             </View>
           </View>
         )}
@@ -206,26 +225,37 @@ const LoanHubScreen = ({ route, navigation }) => {
         {isAdmin && loan.status === 'pending' && (
           <View style={styles.actionRow}>
             <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#fce8e6' }]} onPress={() => { setRejectingLoanId(loan.id); setRejectModalVisible(true); }}>
-              <Text style={{color: '#c5221f', fontWeight: 'bold'}}>{t('loanHub.rejectBtn', 'Reject')}</Text>
+              <Text style={{color: '#c5221f', fontWeight: 'bold'}}>{t('common.cancel', 'Reject')}</Text>
             </TouchableOpacity>
             
             <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#e6f4ea' }]} onPress={() => openApproveModal(loan)}>
-              <Text style={{color: '#137333', fontWeight: 'bold'}}>{t('loanHub.approveBtn', 'Approve')}</Text>
+              <Text style={{color: '#137333', fontWeight: 'bold'}}>{t('groupDetails.approveBtn', 'Approve')}</Text>
             </TouchableOpacity>
           </View>
         )}
 
-        {isAdmin && loan.status === 'active' && (
-          <TouchableOpacity style={styles.repayBtn} onPress={() => { setRepayingLoanId(loan.id); setRepayModalVisible(true); }}>
-            <Ionicons name="card-outline" size={18} color="#fff" style={{marginRight: 8}} />
-            <Text style={styles.repayBtnText}>{t('loanHub.recordRepayment', 'Record Repayment')}</Text>
+        {isAdmin && (loan.status === 'active' || loan.status === 'approved') && (
+          <TouchableOpacity 
+            style={styles.repayBtn} 
+            onPress={() => { 
+              // --- NEW: SMART PRE-FILL LOGIC ---
+              setRepayingLoanId(loan.id); 
+              setRepayMaxAmount(pendingBalance);
+              // Pre-fill the input with the EMI amount, or the remaining balance if it's the last payment!
+              const suggestedPayment = Math.ceil(Math.min(emiAmount, pendingBalance));
+              setRepayAmount(suggestedPayment.toString());
+              setRepayModalVisible(true); 
+            }}
+          >
+            <Ionicons name="cash-outline" size={18} color="#fff" style={{marginRight: 8}} />
+            <Text style={styles.repayBtnText}>{t('loanHub.recordRepayment', 'Record Installment')}</Text>
           </TouchableOpacity>
         )}
       </View>
     );
   };
 
-  if (loading) return <View style={styles.centered}><ActivityIndicator size="large" color="#2952a3" /></View>;
+  if (loading && !loans.active.length) return <View style={styles.centered}><ActivityIndicator size="large" color="#2952a3" /></View>;
 
   const currentTabLoans = loans[activeTab] || [];
 
@@ -236,7 +266,10 @@ const LoanHubScreen = ({ route, navigation }) => {
         <Text style={styles.headerTitle}>{t('loanHub.title', 'Loan Hub')}</Text>
       </View>
 
-      <ScrollView style={styles.content}>
+      <ScrollView 
+        style={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#2952a3']} />}
+      >
         <View style={styles.calculatorSection}>
           <Text style={styles.sectionTitle}>{t('loanHub.estimator', 'Loan Estimator')}</Text>
           <View style={styles.sliderHeader}><Text style={styles.label}>{t('loanHub.principal', 'Principal')}</Text><Text style={styles.sliderValue}>₹{amount.toLocaleString()}</Text></View>
@@ -251,17 +284,19 @@ const LoanHubScreen = ({ route, navigation }) => {
           </View>
 
           <TouchableOpacity style={[styles.submitButton, submitting && styles.disabledButton]} onPress={handleRequestLoan} disabled={submitting}>
-            {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitButtonText}>{t('loanHub.applyBtn', 'Apply for Loan')}</Text>}
+            {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitButtonText}>{t('loanHub.applyBtn', 'Ask for Loan')}</Text>}
           </TouchableOpacity>
         </View>
 
-        <View style={styles.tabsContainer}>
-          {['pending', 'active', 'completed'].map((tab) => (
-            <TouchableOpacity key={tab} style={[styles.tabButton, activeTab === tab && styles.activeTabButton]} onPress={() => setActiveTab(tab)}>
-              <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>{t(`loanHub.tab_${tab}`, tab.toUpperCase())}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 15 }}>
+          <View style={styles.tabsContainer}>
+            {['pending', 'active', 'completed', 'rejected'].map((tab) => (
+              <TouchableOpacity key={tab} style={[styles.tabButton, activeTab === tab && styles.activeTabButton]} onPress={() => setActiveTab(tab)}>
+                <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>{t(`loanHub.tab_${tab}`, tab.toUpperCase())}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </ScrollView>
 
         <View style={styles.section}>
           {currentTabLoans.length > 0 ? currentTabLoans.map((loan) => renderLoanCard(loan)) : <Text style={styles.emptyText}>{t('loanHub.noLoans', 'No active loans at the moment.')}</Text>}
@@ -274,14 +309,14 @@ const LoanHubScreen = ({ route, navigation }) => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t('loanHub.reviewTitle', 'Review Loan Details')}</Text>
-            <Text style={{color: '#666', marginBottom: 15}}>{t('loanHub.approvingFor', 'You are about to approve a loan for')} <Text style={{fontWeight: 'bold', color: '#333'}}>{approvingLoan?.user?.name}</Text>.</Text>
+            <Text style={{color: '#666', marginBottom: 15}}>{t('loanHub.approvingFor', 'Approving for')} <Text style={{fontWeight: 'bold', color: '#333'}}>{approvingLoan?.user?.name}</Text>.</Text>
             
             <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15, paddingBottom: 15, borderBottomWidth: 1, borderColor: '#eee'}}>
-                <Text style={styles.labelSmall}>{t('loanHub.principalReq', 'Principal Request:')}</Text>
+                <Text style={styles.labelSmall}>{t('loanHub.principal', 'Principal:')}</Text>
                 <Text style={styles.bold}>₹{approvingLoan?.principal_amount}</Text>
             </View>
 
-            <Text style={styles.labelSmall}>{t('loanHub.setInterest', 'Set Monthly Interest Rate (%):')}</Text>
+            <Text style={styles.labelSmall}>{t('loanHub.setInterest', 'Monthly Interest Rate (%):')}</Text>
             <TextInput 
               style={[styles.modalInput, { height: 50, fontSize: 18, fontWeight: 'bold' }]} 
               keyboardType="numeric"
@@ -304,31 +339,37 @@ const LoanHubScreen = ({ route, navigation }) => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t('loanHub.reason', 'Reason')}</Text>
-            <TextInput style={styles.modalInput} multiline onChangeText={setRejectionReason} placeholder={t('loanHub.reasonPlaceholder', 'Explain why...')} />
+            <TextInput style={styles.modalInput} multiline onChangeText={setRejectionReason} placeholder="Explain why..." />
             <View style={styles.modalActionRow}>
               <TouchableOpacity onPress={() => setRejectModalVisible(false)} style={{padding: 10}}><Text>{t('common.cancel', 'Cancel')}</Text></TouchableOpacity>
-              <TouchableOpacity onPress={submitRejection} style={[styles.modalSubmitBtn, {backgroundColor: '#dc3545'}]}><Text style={{color: '#fff', fontWeight: 'bold'}}>{t('loanHub.rejectBtn', 'Reject')}</Text></TouchableOpacity>
+              <TouchableOpacity onPress={submitRejection} style={[styles.modalSubmitBtn, {backgroundColor: '#dc3545'}]}><Text style={{color: '#fff', fontWeight: 'bold'}}>{t('common.submit', 'Submit')}</Text></TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* REPAYMENT MODAL */}
+      {/* SMART REPAYMENT MODAL */}
       <Modal visible={repayModalVisible} transparent={true} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{t('loanHub.recordRepayment', 'Record Repayment')}</Text>
-            <Text style={styles.labelSmall}>{t('loanHub.enterAmount', 'Enter the EMI or repayment amount received (₹):')}</Text>
+            <Text style={styles.modalTitle}>{t('loanHub.recordRepayment', 'Record Installment')}</Text>
+            
+            {/* NEW: Helper Text for Admin */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10, padding: 10, backgroundColor: '#f0fdf4', borderRadius: 8, borderWidth: 1, borderColor: '#dcfce7' }}>
+              <Text style={{color: '#166534', fontSize: 12}}>Pending Balance:</Text>
+              <Text style={{color: '#15803d', fontSize: 14, fontWeight: 'bold'}}>₹{Math.ceil(repayMaxAmount)}</Text>
+            </View>
+
+            <Text style={styles.labelSmall}>{t('loanHub.enterAmount', 'Enter the amount received (₹):')}</Text>
             <TextInput 
               style={[styles.modalInput, { height: 50, fontSize: 18, fontWeight: 'bold' }]} 
               keyboardType="numeric"
               value={repayAmount}
               onChangeText={setRepayAmount} 
-              placeholder="e.g. 1500" 
             />
             <View style={styles.modalActionRow}>
               <TouchableOpacity onPress={() => setRepayModalVisible(false)} style={{padding: 10}}><Text>{t('common.cancel', 'Cancel')}</Text></TouchableOpacity>
-              <TouchableOpacity onPress={submitRepayment} style={[styles.modalSubmitBtn, {backgroundColor: '#28a745'}]}><Text style={{color: '#fff', fontWeight: 'bold'}}>{t('common.submit', 'Save Payment')}</Text></TouchableOpacity>
+              <TouchableOpacity onPress={submitRepayment} style={[styles.modalSubmitBtn, {backgroundColor: '#28a745'}]}><Text style={{color: '#fff', fontWeight: 'bold'}}>{t('common.submit', 'Save')}</Text></TouchableOpacity>
             </View>
           </View>
         </View>
@@ -357,8 +398,8 @@ const styles = StyleSheet.create({
   disabledButton: { backgroundColor: '#8b9fcb' },
   submitButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   
-  tabsContainer: { flexDirection: 'row', marginBottom: 15, backgroundColor: '#fff', borderRadius: 10, padding: 4, elevation: 1 },
-  tabButton: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 8 },
+  tabsContainer: { flexDirection: 'row', backgroundColor: '#fff', borderRadius: 10, padding: 4, elevation: 1, minWidth: '100%' },
+  tabButton: { paddingHorizontal: 16, paddingVertical: 12, alignItems: 'center', borderRadius: 8 },
   activeTabButton: { backgroundColor: '#2952a3' },
   tabText: { fontWeight: 'bold', color: '#666', fontSize: 12 },
   activeTabText: { color: '#fff' },

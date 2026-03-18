@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next'; 
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Share, Modal, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Share, Modal, TextInput, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -20,7 +20,8 @@ const CorpusDashboardCard = ({ groupId }) => {
       });
       setStats(response.data.data);
     } catch (error) {
-      console.error("Failed to fetch corpus stats", error);
+      // Silently fail here, because the main fetchGroupData will handle the access denied alert
+      console.log("Corpus access blocked (Expected if pending approval)");
     } finally {
       setLoading(false);
     }
@@ -76,6 +77,8 @@ const GroupDetailsScreen = ({ route, navigation }) => {
   const [pendingLoansCount, setPendingLoansCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
+  const [refreshing, setRefreshing] = useState(false);
+
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
 
@@ -85,13 +88,12 @@ const GroupDetailsScreen = ({ route, navigation }) => {
   const [penaltyReason, setPenaltyReason] = useState('');
   const [submittingPenalty, setSubmittingPenalty] = useState(false);
 
-  // --- NEW: AUDIT DELETE MODAL STATE ---
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [deletingTxId, setDeletingTxId] = useState(null);
   const [deleteReason, setDeleteReason] = useState('');
   const [submittingDelete, setSubmittingDelete] = useState(false);
 
-  const fetchGroupData = async () => {
+  const fetchGroupData = useCallback(async () => {
     try {
       const token = await SecureStore.getItemAsync('userToken');
       const response = await api.get(`/group/${groupId}`, {
@@ -107,14 +109,22 @@ const GroupDetailsScreen = ({ route, navigation }) => {
       setActiveLoansCount(data.active_loans_count || 0);
       setPendingLoansCount(data.pending_loans_count || 0);
     } catch (error) {
+      // --- THE GHOST UI FIX: Kick them out immediately if blocked ---
       console.error("Failed to fetch group details:", error);
-      Alert.alert(t('common.error', 'Error'), "Could not load group data.");
+      Alert.alert(t('common.error', 'Access Denied'), "You are not an approved member of this group.");
+      navigation.goBack(); 
     } finally {
       setLoading(false);
     }
-  };
+  }, [groupId]);
 
-  useFocusEffect(useCallback(() => { fetchGroupData(); }, [groupId]));
+  useFocusEffect(useCallback(() => { fetchGroupData(); }, [fetchGroupData]));
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchGroupData();
+    setRefreshing(false);
+  }, [fetchGroupData]);
 
   const openActionSheet = (user) => {
     setSelectedMember(user);
@@ -126,7 +136,6 @@ const GroupDetailsScreen = ({ route, navigation }) => {
     setTimeout(() => { actionFunction(...args); }, 300);
   };
 
-  // --- NEW: SMART TRANSLATOR FOR AUDIT TAGS ---
   const formatTransactionMethod = (methodStr) => {
     if (!methodStr) return t('ledger.transaction', 'Record');
     let formatted = methodStr;
@@ -242,21 +251,18 @@ const GroupDetailsScreen = ({ route, navigation }) => {
     }
   };
 
-  // --- NEW: INITIATE DELETE (VOID) ---
   const triggerDeleteModal = (txId) => {
     setDeletingTxId(txId);
     setDeleteReason('');
     setDeleteModalVisible(true);
   };
 
-  // --- NEW: EXECUTE DELETE (VOID) ---
   const confirmDeleteTransaction = async () => {
     if (!deleteReason.trim()) return Alert.alert(t('common.error', "Error"), t('alerts.reasonRequired', "You must provide a reason for voiding this record."));
     
     setSubmittingDelete(true);
     try {
       const token = await SecureStore.getItemAsync('userToken');
-      // Axios DELETE requests pass body data via the 'data' property
       await api.delete(`/transactions/${deletingTxId}`, { 
         headers: { Authorization: `Bearer ${token}` },
         data: { delete_reason: deleteReason } 
@@ -272,7 +278,8 @@ const GroupDetailsScreen = ({ route, navigation }) => {
     }
   };
 
-  if (loading) return <View style={styles.centered}><ActivityIndicator size="large" color="#2952a3" /></View>;
+  // Prevent UI rendering before data loads to avoid flickering
+  if (loading || !groupDetails) return <View style={styles.centered}><ActivityIndicator size="large" color="#2952a3" /></View>;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -280,10 +287,16 @@ const GroupDetailsScreen = ({ route, navigation }) => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{groupDetails?.name || 'Group Details'}</Text>
+        {/* TEXT WRAP FIX: numberOfLines={1} prevents long group names from breaking layout */}
+        <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="tail">
+          {groupDetails?.name || 'Group Details'}
+        </Text>
       </View>
 
-      <ScrollView style={styles.content}>
+      <ScrollView 
+        style={styles.content}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#2952a3']} />}
+      >
         <CorpusDashboardCard groupId={groupId} />
 
         <View style={styles.overviewCard}>
@@ -347,7 +360,8 @@ const GroupDetailsScreen = ({ route, navigation }) => {
             {pendingMembers.map((user) => (
               <View key={user.id} style={styles.memberCard}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.memberName}>{user.name}</Text>
+                  {/* TEXT WRAP FIX for long member names */}
+                  <Text style={styles.memberName} numberOfLines={1} ellipsizeMode="tail">{user.name}</Text>
                   <Text style={styles.memberEmail}>{user.email}</Text>
                 </View>
                 <TouchableOpacity style={styles.approveButton} onPress={() => handleApprove(user.id)}>
@@ -374,7 +388,8 @@ const GroupDetailsScreen = ({ route, navigation }) => {
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <View style={styles.avatarCircle}><Text style={styles.avatarText}>{user.name.charAt(0).toUpperCase()}</Text></View>
                   <View style={{ flex: 1, marginLeft: 15 }}>
-                    <Text style={styles.memberName}>{user.name} {isCreator && '👑'}</Text>
+                    {/* TEXT WRAP FIX for long member names */}
+                    <Text style={styles.memberName} numberOfLines={1} ellipsizeMode="tail">{user.name} {isCreator && '👑'}</Text>
                     <Text style={styles.memberRole}>{isUserAdmin ? `⭐ ${t('groupDetails.roleAdmin', 'Admin')}` : t('groupDetails.roleMember', 'Member')}</Text>
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
@@ -396,17 +411,26 @@ const GroupDetailsScreen = ({ route, navigation }) => {
           <View style={styles.transactionsContainer}>
             {recentTransactions.length > 0 ? (
               recentTransactions.map((tx, index) => {
-                // VISUAL CUES FOR VOIDED OR EDITED
                 const isVoided = tx.category === 'voided';
                 const isEdited = tx.method && tx.method.includes('[Edited:');
                 
                 return (
                   <View key={index} style={[styles.transactionItem, isVoided && { backgroundColor: '#fff5f5' }]}>
-                    <View style={styles.txLeft}>
-                      <Text style={[styles.txName, isVoided && { textDecorationLine: 'line-through', color: '#999' }]}>{tx.user?.name || t('groupDetails.roleMember', 'Member')}</Text>
-                      <Text style={styles.txDate}>{new Date(tx.transaction_date).toDateString()}</Text>
-                      {/* FIXED: Now uses the formatTransactionMethod so tags translate properly! */}
-                      <Text style={[styles.txDate, isVoided && {color: '#dc3545', fontWeight: 'bold'}, isEdited && {color: '#e67e22', fontStyle: 'italic'}]}>
+                    
+                    {/* TEXT WRAP FIX IMPLEMENTED HERE */}
+                    <View style={[styles.txLeft, { flex: 1, marginRight: 10, overflow: 'hidden' }]}>
+                      <Text 
+                        style={[styles.txName, isVoided && { textDecorationLine: 'line-through', color: '#999' }]}
+                        numberOfLines={1}
+                        ellipsizeMode="tail"
+                      >
+                        {tx.user?.name || t('groupDetails.roleMember', 'Member')}
+                      </Text>
+                      
+                      <Text 
+                        style={[styles.txDate, isVoided && {color: '#dc3545', fontWeight: 'bold'}, isEdited && {color: '#e67e22', fontStyle: 'italic'}]}
+                        numberOfLines={2}
+                      >
                         {formatTransactionMethod(tx.method)}
                       </Text>
                     </View>
@@ -417,7 +441,6 @@ const GroupDetailsScreen = ({ route, navigation }) => {
                       </Text>
 
                       {tx.category === 'penalty' && <Text style={{fontSize: 10, color: '#e67e22', fontWeight: 'bold', marginTop: 2}}>{t('groupDetails.fineTag', 'FINE')}</Text>}
-                      {/* FIXED: Now pulls from the dynamic language dictionary! */}
                       {isVoided && <Text style={{fontSize: 10, color: '#dc3545', fontWeight: 'bold', marginTop: 2}}>{t('dashboard.voidedTag', 'CANCELLED').toUpperCase()}</Text>}
                       
                       {isAdmin && !isVoided && (
@@ -490,7 +513,7 @@ const GroupDetailsScreen = ({ route, navigation }) => {
 
             <TouchableOpacity style={[styles.sheetAction, {borderBottomWidth: 0}]} onPress={() => executeAction(handleRemove, selectedMember.id, selectedMember.name)}>
               <View style={[styles.sheetIconCircle, {backgroundColor: '#ffebee'}]}><Ionicons name="trash" size={20} color="#dc3545" /></View>
-              <Text style={[styles.sheetActionText, {color: '#dc3545'}]}>{t('groupDetails.removeBtn', 'Remove from Group')}</Text>
+              <Text style={[styles.sheetActionText, {color: '#dc3545'}]}>{t('groupDetails.removeBtn', 'Remove Member')}</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -562,7 +585,7 @@ const styles = StyleSheet.create({
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: { flexDirection: 'row', alignItems: 'center', padding: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
   backButton: { marginRight: 15 },
-  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#333' },
+  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#333', flex: 1 }, // Added flex: 1 to ensure truncation works
   content: { padding: 20 },
   
   // Corpus Dashboard Styles
@@ -628,7 +651,7 @@ const styles = StyleSheet.create({
 
   transactionsContainer: { backgroundColor: '#fff', borderRadius: 12, padding: 10, elevation: 1 },
   transactionItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  txLeft: { flex: 1 },
+  txLeft: { flex: 1, marginRight: 10, overflow: 'hidden' }, // Ensure text stays within bounds
   txName: { fontSize: 15, fontWeight: 'bold', color: '#333' },
   txDate: { fontSize: 12, color: '#888', marginTop: 2 },
   txAmount: { fontSize: 16, fontWeight: 'bold' },

@@ -32,23 +32,38 @@ const GroupsHubScreen = ({ navigation }) => {
     }, [])
   );
 
-  const renderGroup = ({ item }) => (
-    <TouchableOpacity 
-      style={styles.groupCard}
-      onPress={() => navigation.navigate('GroupDetails', { groupId: item.id, role: item.pivot.role })}
-    >
-      <View style={styles.groupIconContainer}>
-        <Ionicons name="people" size={24} color="#2952a3" />
-      </View>
-      <View style={styles.groupInfo}>
-        <Text style={styles.groupName}>{item.name}</Text>
-        <Text style={styles.groupRole}>
-          {item.pivot.role === 'admin' ? `⭐ ${t('groupDetails.roleAdmin', 'Gat Adhyaksha')}` : t('groupDetails.roleMember', 'Member')}
-        </Text>
-      </View>
-      <Ionicons name="chevron-forward" size={20} color="#ccc" />
-    </TouchableOpacity>
-  );
+  const renderGroup = ({ item }) => {
+    // --- SECURITY LOCK: Check if the user is pending ---
+    const isPending = item.pivot.status === 'pending';
+
+    return (
+      <TouchableOpacity 
+        style={[styles.groupCard, isPending && { opacity: 0.7, backgroundColor: '#fafafa' }]}
+        // If pending, do nothing. If approved, navigate to details.
+        onPress={() => !isPending && navigation.navigate('GroupDetails', { groupId: item.id, role: item.pivot.role })}
+        activeOpacity={isPending ? 1 : 0.7}
+      >
+        <View style={[styles.groupIconContainer, isPending && { backgroundColor: '#f0f0f0' }]}>
+          <Ionicons name="people" size={24} color={isPending ? "#aaa" : "#2952a3"} />
+        </View>
+        <View style={styles.groupInfo}>
+          <Text style={[styles.groupName, isPending && { color: '#888' }]}>{item.name}</Text>
+          <Text style={styles.groupRole}>
+            {item.pivot.role === 'admin' ? `⭐ ${t('groupDetails.roleAdmin', 'Gat Adhyaksha')}` : t('groupDetails.roleMember', 'Member')}
+          </Text>
+        </View>
+        
+        {/* Visual Badge for Pending Status */}
+        {isPending ? (
+          <View style={styles.pendingBadge}>
+            <Text style={styles.pendingBadgeText}>{t('groupDetails.statusPending', 'PENDING')}</Text>
+          </View>
+        ) : (
+          <Ionicons name="chevron-forward" size={20} color="#ccc" />
+        )}
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -99,12 +114,14 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', padding: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
   backButton: { marginRight: 15 },
   headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#333' },
-  listContainer: { padding: 20, paddingBottom: 160 }, // Added more padding to avoid footer overlap
+  listContainer: { padding: 20, paddingBottom: 160 }, 
   groupCard: { backgroundColor: '#fff', padding: 15, borderRadius: 12, flexDirection: 'row', alignItems: 'center', elevation: 1, marginBottom: 12 },
   groupIconContainer: { backgroundColor: '#eef2f9', padding: 12, borderRadius: 10 },
   groupInfo: { flex: 1, marginLeft: 15 },
   groupName: { fontSize: 16, fontWeight: 'bold', color: '#333' },
   groupRole: { fontSize: 13, color: '#e67e22', fontWeight: 'bold', marginTop: 2 },
+  pendingBadge: { backgroundColor: '#fff4e5', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: '#ffe0b2' },
+  pendingBadgeText: { color: '#e67e22', fontSize: 10, fontWeight: 'bold' },
   emptyState: { padding: 40, alignItems: 'center', justifyContent: 'center', marginTop: 50 },
   emptyStateText: { color: '#888', fontSize: 16, textAlign: 'center' },
   footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, backgroundColor: '#f4f6f8' },

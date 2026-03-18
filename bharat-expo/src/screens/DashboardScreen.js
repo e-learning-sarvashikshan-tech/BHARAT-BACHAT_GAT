@@ -30,7 +30,8 @@ const DashboardScreen = ({ navigation }) => {
   
   const [refreshing, setRefreshing] = useState(false);
 
-  // --- NEW: AUDIT DELETE MODAL STATE FOR DASHBOARD ---
+  const [unreadCount, setUnreadCount] = useState(0);
+
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [deletingTxId, setDeletingTxId] = useState(null);
   const [deleteReason, setDeleteReason] = useState('');
@@ -52,6 +53,13 @@ const DashboardScreen = ({ navigation }) => {
       setTotalSavings(statsResponse.data.total_savings);
       setGroups(statsResponse.data.groups || []);
       setRecentTransactions(statsResponse.data.recent_transactions || []);
+
+      try {
+        const notifResponse = await api.get('/notifications', { headers: { Authorization: `Bearer ${token}` } });
+        setUnreadCount(notifResponse.data.unread_count || 0);
+      } catch (err) {
+        console.log("Could not fetch notifications", err);
+      }
 
       const unsynced = await getUnsyncedTransactions();
       if (unsynced && unsynced.length > 0) {
@@ -91,12 +99,10 @@ const DashboardScreen = ({ navigation }) => {
     navigation.replace('Login');
   };
 
-  // --- RESTORED: EDIT FUNCTION ---
   const handleEditTransaction = (tx) => {
     navigation.navigate('EditTransaction', { transactionData: tx });
   };
 
-  // --- RESTORED & UPGRADED: DELETE (VOID) LOGIC ---
   const triggerDeleteModal = (txId) => {
     setDeletingTxId(txId);
     setDeleteReason('');
@@ -116,7 +122,7 @@ const DashboardScreen = ({ navigation }) => {
       
       Alert.alert(t('common.success', "Success"), t('alerts.voidSuccess', "Transaction securely voided."));
       setDeleteModalVisible(false);
-      fetchData(); // Refresh the dashboard feed
+      fetchData(); 
     } catch (error) {
       Alert.alert(t('common.error', 'Error'), t('alerts.voidFailed', "Failed to void transaction."));
     } finally {
@@ -137,6 +143,11 @@ const DashboardScreen = ({ navigation }) => {
     return formatted;
   };
 
+  const isUserAdminOfGroup = (targetGroupId) => {
+    const group = groups.find(g => g.id === targetGroupId);
+    return group && group.pivot?.role === 'admin';
+  };
+
   if (loading) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -145,9 +156,6 @@ const DashboardScreen = ({ navigation }) => {
       </View>
     );
   }
-
-  // --- RESTORED: GLOBAL ADMIN CHECK ---
-  const isGlobalAdmin = groups.some(group => group.pivot?.role === 'admin');
 
   return (
     <ScrollView 
@@ -163,6 +171,16 @@ const DashboardScreen = ({ navigation }) => {
              <Text style={styles.greetingName}>{userData?.name || t('groupDetails.roleMember', 'Member')} 👋</Text>
           </View>
         </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => navigation.navigate('Notifications')} style={styles.bellButton}>
+          <Ionicons name="notifications-outline" size={26} color="#333" />
+          {unreadCount > 0 && (
+            <View style={styles.badgeContainer}>
+              <Text style={styles.badgeText}>{unreadCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
         <TouchableOpacity onPress={handleLogout} style={styles.logoutButton}>
           <Ionicons name="log-out-outline" size={26} color="#dc3545" />
         </TouchableOpacity>
@@ -234,6 +252,8 @@ const DashboardScreen = ({ navigation }) => {
             recentTransactions.map((tx, index) => {
               const isVoided = tx.category === 'voided';
               const isEdited = tx.method && tx.method.includes('[Edited:');
+              
+              const hasAdminRightsForThisTx = isUserAdminOfGroup(tx.group_id);
 
               return (
                 <View key={index} style={[styles.transactionItem, isVoided && { backgroundColor: '#fff5f5' }]}>
@@ -244,11 +264,20 @@ const DashboardScreen = ({ navigation }) => {
                       color={isVoided ? "#999" : (tx.type === 'deposit' || tx.type === 'credit' ? "#28a745" : "#dc3545")} 
                     />
                   </View>
-                  <View style={styles.transactionDetails}>
-                    <Text style={[styles.transactionType, isVoided && { textDecorationLine: 'line-through', color: '#999' }]}>
+                  
+                  {/* --- FIX: ADDED FLEX AND OVERFLOW HIDDEN FOR LONG TEXT --- */}
+                  <View style={[styles.transactionDetails, { flex: 1, marginRight: 10, overflow: 'hidden' }]}>
+                    <Text 
+                      style={[styles.transactionType, isVoided && { textDecorationLine: 'line-through', color: '#999' }]}
+                      numberOfLines={1}
+                      ellipsizeMode="tail"
+                    >
                         {tx.group?.name || t('ledger.transaction', 'Record')}
                     </Text>
-                    <Text style={[styles.transactionDate, isEdited && {color: '#e67e22', fontStyle: 'italic'}, isVoided && {color: '#dc3545', fontWeight: 'bold'}]}>
+                    <Text 
+                      style={[styles.transactionDate, isEdited && {color: '#e67e22', fontStyle: 'italic'}, isVoided && {color: '#dc3545', fontWeight: 'bold'}]}
+                      numberOfLines={2}
+                    >
                       {new Date(tx.transaction_date).toLocaleDateString()} • {formatTransactionMethod(tx.method)}
                     </Text>
                   </View>
@@ -258,8 +287,11 @@ const DashboardScreen = ({ navigation }) => {
                       {tx.type === 'deposit' || tx.type === 'credit' ? '+' : '-'}₹{isVoided ? '0' : tx.amount}
                     </Text>
                     
-                    {/* RESTORED: ACTION ICONS FOR ADMINS */}
-                    {isGlobalAdmin && !isVoided && (
+                    {/* --- FIX: RESTORED THE FINE BADGE --- */}
+                    {tx.category === 'penalty' && <Text style={{fontSize: 10, color: '#e67e22', fontWeight: 'bold', marginTop: 2, textAlign: 'right'}}>{t('groupDetails.fineTag', 'FINE')}</Text>}
+                    {isVoided && <Text style={{fontSize: 10, color: '#dc3545', fontWeight: 'bold', marginTop: 2, textAlign: 'right'}}>{t('dashboard.voidedTag', 'CANCELLED').toUpperCase()}</Text>}
+
+                    {hasAdminRightsForThisTx && !isVoided && (
                       <View style={styles.actionIconsRow}>
                         <TouchableOpacity onPress={() => handleEditTransaction(tx)} style={styles.smallIconButton}>
                           <Ionicons name="pencil-outline" size={16} color="#007bff" />
@@ -279,7 +311,6 @@ const DashboardScreen = ({ navigation }) => {
         </View>
       </View>
 
-      {/* NEW: VOID/DELETE TRANSACTION MODAL */}
       <Modal visible={deleteModalVisible} transparent={true} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -314,6 +345,11 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, paddingTop: 60, backgroundColor: '#fff' },
   greeting: { fontSize: 24, fontWeight: 'bold', color: '#333' },
   greetingName: { fontSize: 24, fontWeight: 'bold', color: '#2952a3' },
+  
+  bellButton: { padding: 10, position: 'relative' },
+  badgeContainer: { position: 'absolute', right: 8, top: 8, backgroundColor: '#dc3545', width: 18, height: 18, borderRadius: 9, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#fff' },
+  badgeText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
+
   logoutButton: { padding: 10, backgroundColor: '#ffe6e6', borderRadius: 12, marginLeft: 10 },
   
   cardsContainer: { flexDirection: 'row', padding: 20, justifyContent: 'space-between' },
@@ -338,7 +374,7 @@ const styles = StyleSheet.create({
   transactionsContainer: { backgroundColor: '#fff', marginHorizontal: 20, borderRadius: 16, padding: 10, elevation: 1 },
   transactionItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
   transactionIcon: { marginRight: 15 },
-  transactionDetails: { flex: 1 },
+  transactionDetails: { flex: 1 }, 
   transactionType: { fontSize: 16, fontWeight: 'bold', color: '#333' },
   transactionDate: { fontSize: 12, color: '#888', marginTop: 2 },
   transactionAmount: { fontSize: 18, fontWeight: 'bold' },
