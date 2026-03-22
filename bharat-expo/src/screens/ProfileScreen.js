@@ -8,7 +8,11 @@ import {
   ScrollView, 
   ActivityIndicator, 
   Alert,
-  Modal 
+  Modal,
+  Platform,
+  TextInput,
+  KeyboardAvoidingView,
+  Image // <-- NEW IMPORT
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,20 +20,38 @@ import * as SecureStore from 'expo-secure-store';
 import { useFocusEffect } from '@react-navigation/native';
 import { captureRef } from 'react-native-view-shot';
 import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system'; // <-- ADDED FOR CSV DOWNLOAD
+import * as FileSystem from 'expo-file-system/legacy'; 
+import * as Print from 'expo-print'; 
+import DateTimePicker from '@react-native-community/datetimepicker'; 
+import * as ImagePicker from 'expo-image-picker'; // <-- NEW IMPORT
 import api from '../services/api';
+import { COLORS } from '../constants/theme'; 
 
 const ProfileScreen = ({ navigation }) => {
   const { t, i18n } = useTranslation(); 
   const [userData, setUserData] = useState(null);
   const [totalSavings, setTotalSavings] = useState(0);
-  const [activeLoans, setActiveLoans] = useState([]); // <-- NEW STATE FOR LOANS
+  const [activeLoans, setActiveLoans] = useState([]); 
   const [loading, setLoading] = useState(true);
   const [isSharing, setIsSharing] = useState(false);
-  const [isDownloading, setIsDownloading] = useState(false); // <-- DOWNLOAD STATE
+  const [isUploadingImage, setIsUploadingImage] = useState(false); // NEW STATE
   
   const [langModalVisible, setLangModalVisible] = useState(false);
   const profileCardRef = useRef();
+
+  const [exportModalVisible, setExportModalVisible] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false); 
+  const [startDate, setStartDate] = useState(new Date(new Date().setMonth(new Date().getMonth() - 1))); 
+  const [endDate, setEndDate] = useState(new Date());
+  const [datePickerTarget, setDatePickerTarget] = useState(null); 
+
+  const [editModalVisible, setEditModalVisible] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+
+  const [helpModalVisible, setHelpModalVisible] = useState(false);
+  const [expandedFaq, setExpandedFaq] = useState(null);
 
   const fetchUserProfile = async () => {
     try {
@@ -39,7 +61,7 @@ const ProfileScreen = ({ navigation }) => {
       });
       setUserData(response.data.user);
       setTotalSavings(response.data.total_savings || 0);
-      setActiveLoans(response.data.personal_loans || []); // <-- GET LOANS FROM BACKEND
+      setActiveLoans(response.data.personal_loans || []); 
     } catch (error) {
       console.error("Failed to fetch profile data:", error);
     } finally {
@@ -48,6 +70,96 @@ const ProfileScreen = ({ navigation }) => {
   };
 
   useFocusEffect(useCallback(() => { fetchUserProfile(); }, []));
+
+  // --- NEW: HANDLE PROFILE IMAGE UPLOAD ---
+  const handlePickImage = async () => {
+    // Request permission
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (permissionResult.granted === false) {
+      Alert.alert(t('common.error', 'Permission Required'), 'You need to allow camera roll access to upload a photo.');
+      return;
+    }
+
+    // Launch picker
+    let pickerResult = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1], // Force a square crop for avatars
+      quality: 0.5, // Compress to save bandwidth
+    });
+
+    if (!pickerResult.canceled) {
+      uploadProfileImage(pickerResult.assets[0].uri);
+    }
+  };
+
+  const uploadProfileImage = async (imageUri) => {
+    setIsUploadingImage(true);
+    try {
+      const token = await SecureStore.getItemAsync('userToken');
+      
+      // Create form data for file upload
+      let formData = new FormData();
+      formData.append('profile_photo', {
+        uri: imageUri,
+        name: 'profile.jpg',
+        type: 'image/jpeg',
+      });
+
+      const response = await api.post('/user/profile/photo', formData, {
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data',
+        }
+      });
+
+      if (response.data.status === 'success') {
+        // Update local state to show the new image instantly
+        setUserData({ ...userData, profile_photo_url: response.data.photo_url });
+        Alert.alert(t('common.success', 'Success'), 'Profile photo updated!');
+      }
+    } catch (error) {
+      console.error("Upload error:", error);
+      Alert.alert(t('common.error', 'Error'), 'Failed to upload photo. Please try again.');
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+  // ----------------------------------------
+
+  const handleUpdateProfile = async () => {
+    if (!editName.trim() || !editPhone.trim()) {
+      Alert.alert(t('common.error', 'Error'), "Name and Phone number cannot be empty.");
+      return;
+    }
+
+    setIsUpdatingProfile(true);
+    try {
+      const token = await SecureStore.getItemAsync('userToken');
+      const response = await api.put('/user/profile/update', {
+        name: editName,
+        phone: editPhone
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (response.data.status === 'success') {
+        setUserData(response.data.user); 
+        setEditModalVisible(false);
+        Alert.alert(t('common.success', 'Success'), t('profile.updateSuccess', 'Your profile has been updated successfully!'));
+      }
+    } catch (error) {
+      Alert.alert(t('common.error', 'Error'), "Failed to update profile. Please try again.");
+    } finally {
+      setIsUpdatingProfile(false);
+    }
+  };
+
+  const openEditModal = () => {
+    setEditName(userData?.name || '');
+    setEditPhone(userData?.phone || '');
+    setEditModalVisible(true);
+  };
 
   const handleShareProfile = async () => {
     try {
@@ -65,44 +177,125 @@ const ProfileScreen = ({ navigation }) => {
     }
   };
 
-  // --- NEW GENERATE & DOWNLOAD CSV STATEMENT FUNCTION ---
-  const handleDownloadStatement = async () => {
+  const handleDateChange = (event, selectedDate) => {
+    if (Platform.OS === 'android') {
+      setDatePickerTarget(null); 
+    }
+    if (selectedDate) {
+      if (datePickerTarget === 'start') setStartDate(selectedDate);
+      if (datePickerTarget === 'end') setEndDate(selectedDate);
+    }
+  };
+
+  const generateFilteredStatementPDF = async () => {
+    if (startDate > endDate) {
+      Alert.alert(t('common.error', "Error"), "Start date cannot be after the end date.");
+      return;
+    }
+
+    setIsGenerating(true);
     try {
-      setIsDownloading(true);
       const token = await SecureStore.getItemAsync('userToken');
-      
-      // Fetch all transactions across all groups for this user
-      const response = await api.get('/transactions/user', { 
-        headers: { Authorization: `Bearer ${token}` } 
+      const response = await api.post(`/user/ledger/export`, {
+        start_date: startDate.toISOString().split('T')[0],
+        end_date: endDate.toISOString().split('T')[0]
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
       });
-      
-      const txs = response.data.transactions || [];
-      if (txs.length === 0) {
-          Alert.alert(t('common.warning', 'Warning'), "You have no transactions to download.");
+
+      const filteredTransactions = response.data.transactions;
+
+      if (filteredTransactions.length === 0) {
+          Alert.alert(t('common.warning', "No Data"), t('alerts.noTxWarning', "There are no transactions recorded in this date range."));
+          setIsGenerating(false);
           return;
       }
 
-      // Build CSV String
-      let csvContent = "Date,Group Name,Type,Amount,Method,Category\n";
-      txs.forEach(tx => {
+      let tableRows = '';
+      let totalDeposited = 0;
+      let totalWithdrawn = 0;
+
+      filteredTransactions.forEach((tx) => {
           const date = new Date(tx.transaction_date).toLocaleDateString();
-          const groupName = tx.group?.name || 'Manual';
-          const type = tx.type === 'deposit' ? 'In (+)' : 'Out (-)';
-          csvContent += `"${date}","${groupName}","${type}","${tx.amount}","${tx.method}","${tx.category}"\n`;
+          const typeColor = tx.type === 'deposit' ? COLORS.success : COLORS.danger;
+          const sign = tx.type === 'deposit' ? '+' : '-';
+          if (tx.type === 'deposit' && tx.category !== 'voided') totalDeposited += parseFloat(tx.amount);
+          if (tx.type === 'withdrawal' && tx.category !== 'voided') totalWithdrawn += parseFloat(tx.amount);
+
+          tableRows += `
+            <tr>
+              <td style="padding: 10px; border-bottom: 1px solid #eee; color: ${COLORS.textDark};">${date}</td>
+              <td style="padding: 10px; border-bottom: 1px solid #eee; color: ${COLORS.textDark}; font-weight: bold;">${tx.group?.name || 'Manual'}</td>
+              <td style="padding: 10px; border-bottom: 1px solid #eee; color: ${COLORS.textGray};">${tx.method || 'Transfer'}</td>
+              <td style="padding: 10px; border-bottom: 1px solid #eee; color: ${typeColor}; font-weight: bold; text-align: right;">${sign}₹${tx.amount}</td>
+            </tr>
+          `;
       });
 
-      // Save to device
-      const fileUri = FileSystem.documentDirectory + "My_Bharat_Bachat_Statement.csv";
-      await FileSystem.writeAsStringAsync(fileUri, csvContent, { encoding: FileSystem.EncodingType.UTF8 });
+      const htmlContent = `
+        <html>
+          <head>
+            <style>
+              body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; padding: 40px; color: ${COLORS.textDark}; }
+              .header { text-align: center; border-bottom: 2px solid ${COLORS.primaryBlue}; padding-bottom: 20px; margin-bottom: 30px; }
+              .logo { font-size: 32px; font-weight: bold; color: ${COLORS.primaryBlue}; margin: 0; }
+              .sub-logo { font-size: 16px; color: ${COLORS.textGray}; margin-top: 5px; }
+              .user-details { text-align: center; font-size: 18px; font-weight: bold; color: ${COLORS.textDark}; margin-top: 10px; }
+              .summary-box { background-color: ${COLORS.bgLight}; padding: 20px; border-radius: 10px; margin-bottom: 30px; display: flex; justify-content: space-between;}
+              .summary-item { text-align: center; }
+              .summary-title { font-size: 12px; color: ${COLORS.textMuted}; text-transform: uppercase; margin: 0; }
+              .summary-amount { font-size: 24px; margin: 5px 0 0 0; font-weight: bold; }
+              table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+              th { background-color: ${COLORS.primaryBlueLight}; color: ${COLORS.primaryBlue}; font-weight: bold; text-align: left; padding: 12px 10px; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <p class="logo">Bharat Bachat</p>
+              <p class="sub-logo">Personal Consolidated Statement</p>
+              <p class="user-details">${userData?.name || 'Member'} (${userData?.phone || ''})</p>
+              <p style="font-size: 14px; color: ${COLORS.textMuted}; margin-top: 10px;">Period: ${startDate.toDateString()} to ${endDate.toDateString()}</p>
+            </div>
+            <div class="summary-box">
+              <div class="summary-item"><p class="summary-title">Total Added (+)</p><p class="summary-amount" style="color: ${COLORS.success};">₹${totalDeposited.toLocaleString()}</p></div>
+              <div class="summary-item"><p class="summary-title">Total Withdrawn (-)</p><p class="summary-amount" style="color: ${COLORS.danger};">₹${totalWithdrawn.toLocaleString()}</p></div>
+              <div class="summary-item"><p class="summary-title">Net Flow</p><p class="summary-amount" style="color: ${COLORS.primaryBlue};">₹${(totalDeposited - totalWithdrawn).toLocaleString()}</p></div>
+            </div>
+            <h3>Transaction History</h3>
+            <table><thead><tr><th>Date</th><th>Bachat Gat Name</th><th>Details</th><th style="text-align: right;">Amount</th></tr></thead><tbody>${tableRows}</tbody></table>
+            <p style="text-align: center; color: ${COLORS.textMuted}; font-size: 12px; margin-top: 50px;">Generated securely by the Bharat Bachat App.</p>
+          </body>
+        </html>
+      `;
 
-      // Open Share Menu (WhatsApp, Email, Save to Files, etc.)
-      await Sharing.shareAsync(fileUri, { dialogTitle: 'Download My Statement' });
-
+      const { uri } = await Print.printToFileAsync({ html: htmlContent });
+      
+      if (Platform.OS === 'android') {
+        try {
+          const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+          if (permissions.granted) {
+            const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+            const savedUri = await FileSystem.StorageAccessFramework.createFileAsync(permissions.directoryUri, `My_Statement_${startDate.toISOString().split('T')[0]}.pdf`, 'application/pdf');
+            await FileSystem.writeAsStringAsync(savedUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+            Alert.alert(t('common.success', "Success"), "Statement downloaded successfully to your device!");
+            setExportModalVisible(false);
+          } else {
+            await Sharing.shareAsync(uri);
+            setExportModalVisible(false);
+          }
+        } catch (e) {
+          await Sharing.shareAsync(uri);
+          setExportModalVisible(false);
+        }
+      } else {
+        await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+        setExportModalVisible(false);
+      }
     } catch (error) {
-      console.error(error);
-      Alert.alert(t('common.error', 'Error'), "Could not download the statement.");
+      console.error("PDF Gen Error:", error);
+      Alert.alert(t('common.error', "Error"), "Could not generate PDF statement.");
     } finally {
-      setIsDownloading(false);
+      setIsGenerating(false);
     }
   };
 
@@ -128,62 +321,90 @@ const ProfileScreen = ({ navigation }) => {
     return 'English';
   };
 
-  if (loading) return <View style={styles.centered}><ActivityIndicator size="large" color="#2952a3" /></View>;
+  const toggleFaq = (id) => {
+    setExpandedFaq(expandedFaq === id ? null : id);
+  };
+
+  const renderFaqItem = (id, qKey, aKey) => {
+    const isExpanded = expandedFaq === id;
+    return (
+      <TouchableOpacity style={[styles.faqBox, isExpanded && styles.faqBoxActive]} onPress={() => toggleFaq(id)} activeOpacity={0.7}>
+        <View style={styles.faqQRow}>
+          <Text style={[styles.faqQ, isExpanded && {color: COLORS.primaryBlue}]}>{t(qKey)}</Text>
+          <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={20} color={isExpanded ? COLORS.primaryBlue : COLORS.textMuted} />
+        </View>
+        {isExpanded && <View style={styles.faqAContainer}><Text style={styles.faqA}>{t(aKey)}</Text></View>}
+      </TouchableOpacity>
+    );
+  };
+
+  if (loading) return <View style={styles.centered}><ActivityIndicator size="large" color={COLORS.primaryBlue} /></View>;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
+      
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#333" />
-        </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('profile.title', 'My Profile')}</Text>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
         
-        <View collapsable={false} ref={profileCardRef} style={styles.profileCard}>
+        {/* --- PREMIUM PROFILE CARD --- */}
+        <View collapsable={false} ref={profileCardRef} style={styles.profileHeaderCard}>
           <View style={styles.avatarCircle}>
-            <Text style={styles.avatarText}>{userData?.name ? userData.name.charAt(0).toUpperCase() : 'U'}</Text>
+            {/* UPDATED: Displays Image if URL exists, otherwise shows initial */}
+            {isUploadingImage ? (
+              <ActivityIndicator size="small" color={COLORS.primaryBlue} />
+            ) : userData?.profile_photo_url ? (
+              <Image source={{ uri: userData.profile_photo_url }} style={styles.avatarImage} />
+            ) : (
+              <Text style={styles.avatarText}>{userData?.name ? userData.name.charAt(0).toUpperCase() : 'U'}</Text>
+            )}
+            
+            {/* UPDATED: Camera Button triggers Pick Image */}
+            <TouchableOpacity style={styles.editAvatarBtn} onPress={handlePickImage}>
+              <Ionicons name="camera" size={14} color={COLORS.bgWhite} />
+            </TouchableOpacity>
           </View>
-          <Text style={styles.userName}>{userData?.name || 'Member Name'}</Text>
-          <Text style={styles.userContact}>{userData?.phone || userData?.email}</Text>
           
-          <View style={styles.savingsBox}>
-            <Text style={styles.savingsLabel}>{t('dashboard.totalSavings', 'Total Personal Savings')}</Text>
-            <Text style={styles.savingsAmount}>₹{totalSavings}</Text>
+          <Text style={styles.userName}>{userData?.name || 'Member Name'}</Text>
+          <Text style={styles.userPhone}>{userData?.phone || userData?.email}</Text>
+          
+          <View style={styles.joinedBadge}>
+            <Ionicons name="shield-checkmark" size={14} color={COLORS.success} />
+            <Text style={styles.joinedText}>{t('profile.verified', 'Verified Member')}</Text>
           </View>
 
           <View style={{ marginTop: 20, width: '100%', paddingHorizontal: 30 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
-                <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#555' }}>Bachat Trust Score</Text>
-                <Text style={{ fontSize: 18, fontWeight: '900', color: (650 + (totalSavings * 0.01)) > 750 ? '#137333' : '#e67e22' }}>
+                <Text style={{ fontSize: 13, fontWeight: 'bold', color: COLORS.textGray }}>{t('profile.trustScore', 'Bachat Trust Score')}</Text>
+                <Text style={{ fontSize: 18, fontWeight: '900', color: (650 + (totalSavings * 0.01)) > 750 ? COLORS.success : COLORS.warning }}>
                     {Math.min(Math.floor(650 + (totalSavings * 0.01)), 850)}
                 </Text>
             </View>
-            <View style={{ height: 8, backgroundColor: '#e9ecef', borderRadius: 4, overflow: 'hidden' }}>
-                <View style={{ height: '100%', backgroundColor: (650 + (totalSavings * 0.01)) > 750 ? '#28a745' : '#e67e22', width: `${Math.min(((650 + (totalSavings * 0.01)) / 850) * 100, 100)}%` }} />
+            <View style={{ height: 8, backgroundColor: COLORS.borderLight, borderRadius: 4, overflow: 'hidden' }}>
+                <View style={{ height: '100%', backgroundColor: (650 + (totalSavings * 0.01)) > 750 ? COLORS.success : COLORS.warning, width: `${Math.min(((650 + (totalSavings * 0.01)) / 850) * 100, 100)}%` }} />
             </View>
-            <Text style={{ fontSize: 11, color: '#888', marginTop: 5, textAlign: 'right' }}>
-                {(650 + (totalSavings * 0.01)) > 750 ? 'Excellent Standing' : 'Good Standing'}
+            <Text style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 5, textAlign: 'right' }}>
+                {(650 + (totalSavings * 0.01)) > 750 ? t('profile.excellent', 'Excellent Standing') : t('profile.good', 'Good Standing')}
             </Text>
           </View>
         </View>
 
         <View style={styles.shareContainer}>
           <TouchableOpacity style={[styles.shareButton, isSharing && { opacity: 0.7 }]} onPress={handleShareProfile} disabled={isSharing}>
-            {isSharing ? <ActivityIndicator color="#fff" /> : (
+            {isSharing ? <ActivityIndicator color={COLORS.bgWhite} /> : (
               <>
-                <Ionicons name="share-social-outline" size={20} color="#fff" style={{ marginRight: 8 }} />
+                <Ionicons name="share-social-outline" size={20} color={COLORS.bgWhite} style={{ marginRight: 8 }} />
                 <Text style={styles.shareText}>{t('profile.shareMilestone', 'Share My Progress')}</Text>
               </>
             )}
           </TouchableOpacity>
         </View>
 
-        {/* --- NEW SECTION: PERSONAL ACTIVE LOANS --- */}
         {activeLoans.length > 0 && (
-          <View style={{ padding: 20, backgroundColor: '#fff', marginTop: 15, elevation: 1 }}>
-            <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 15 }}>{t('loanHub.title', 'My Active Loans')}</Text>
+          <View style={{ padding: 20, backgroundColor: COLORS.bgWhite, marginTop: 15, elevation: 1 }}>
+            <Text style={{ fontSize: 16, fontWeight: 'bold', color: COLORS.textDark, marginBottom: 15 }}>{t('loanHub.title', 'My Active Loans')}</Text>
             {activeLoans.map(loan => {
               const principal = parseFloat(loan.principal_amount);
               const rate = parseFloat(loan.interest_rate);
@@ -191,10 +412,10 @@ const ProfileScreen = ({ navigation }) => {
               
               return (
                 <View key={loan.id} style={{ backgroundColor: '#fdf7f2', padding: 15, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: '#fae3ce' }}>
-                  <Text style={{ fontSize: 14, color: '#e67e22', fontWeight: 'bold', marginBottom: 5 }}>{loan.group?.name}</Text>
+                  <Text style={{ fontSize: 14, color: COLORS.warning, fontWeight: 'bold', marginBottom: 5 }}>{loan.group?.name}</Text>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                     <Text style={{ color: '#666', fontSize: 13 }}>Loan Amount: <Text style={{fontWeight: 'bold', color: '#333'}}>₹{principal}</Text></Text>
-                     <Text style={{ color: '#666', fontSize: 13 }}>Balance: <Text style={{fontWeight: 'bold', color: '#dc3545'}}>₹{Math.ceil(totalDue - parseFloat(loan.amount_paid || 0))}</Text></Text>
+                     <Text style={{ color: COLORS.textGray, fontSize: 13 }}>{t('loanHub.principal', 'Principal')}: <Text style={{fontWeight: 'bold', color: COLORS.textDark}}>₹{principal}</Text></Text>
+                     <Text style={{ color: COLORS.textGray, fontSize: 13 }}>{t('loanHub.totalDue', 'Pending')}: <Text style={{fontWeight: 'bold', color: COLORS.danger}}>₹{Math.ceil(totalDue - parseFloat(loan.amount_paid || 0))}</Text></Text>
                   </View>
                 </View>
               );
@@ -205,41 +426,45 @@ const ProfileScreen = ({ navigation }) => {
         <View style={styles.menuContainer}>
           <Text style={styles.menuHeader}>Account Settings</Text>
 
-          <TouchableOpacity style={styles.menuItem} onPress={() => {
-            const details = `${t('login.fullName', 'Full Name')}: ${userData?.name || '-'}\n${t('login.mobileNumber', 'Mobile Number')}: ${userData?.phone || '-'}\n${t('login.emailLabel', 'Email Address')}: ${userData?.email || '-'}`;
-            Alert.alert(t('profile.personalDetails', 'Personal Details'), details);
-          }}>
-            <View style={styles.menuIconBox}><Ionicons name="person-outline" size={20} color="#2952a3" /></View>
-            <Text style={styles.menuText}>{t('profile.personalDetails', 'Personal Details')}</Text>
-            <Ionicons name="chevron-forward" size={20} color="#ccc" />
+          <TouchableOpacity style={styles.menuItem} onPress={openEditModal}>
+            <View style={styles.menuIconBox}><Ionicons name="person-outline" size={20} color={COLORS.primaryBlue} /></View>
+            <Text style={styles.menuText}>{t('profile.editProfile', 'Edit Personal Details')}</Text>
+            <Ionicons name="chevron-forward" size={20} color={COLORS.textMuted} />
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.menuItem} onPress={() => setLangModalVisible(true)}>
-            <View style={styles.menuIconBox}><Ionicons name="language-outline" size={20} color="#2952a3" /></View>
+            <View style={styles.menuIconBox}><Ionicons name="language-outline" size={20} color={COLORS.primaryBlue} /></View>
             <View style={{ flex: 1 }}>
                 <Text style={styles.menuText}>{t('profile.changeLanguage', 'App Language')}</Text>
-                <Text style={{ fontSize: 12, color: '#888', marginTop: 2 }}>{getCurrentLanguageName()}</Text>
+                <Text style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>{getCurrentLanguageName()}</Text>
             </View>
-            <Ionicons name="chevron-forward" size={20} color="#ccc" />
+            <Ionicons name="chevron-forward" size={20} color={COLORS.textMuted} />
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.menuItem} onPress={() => Alert.alert(t('profile.helpSupport', 'Help & Support'), t('alerts.helpMessage', 'Please contact your Gat Pramukh for immediate assistance.'))}>
-            <View style={styles.menuIconBox}><Ionicons name="help-circle-outline" size={20} color="#2952a3" /></View>
-            <Text style={styles.menuText}>{t('profile.helpSupport', 'Help & Support')}</Text>
-            <Ionicons name="chevron-forward" size={20} color="#ccc" />
+          <TouchableOpacity style={styles.menuItem} onPress={() => setExportModalVisible(true)}>
+            <View style={[styles.menuIconBox, { backgroundColor: '#e6f4ea' }]}><Ionicons name="download-outline" size={20} color={COLORS.success} /></View>
+            <Text style={styles.menuText}>{t('profile.downloadStatement', 'Download Complete Statement')}</Text>
+            <Ionicons name="chevron-forward" size={20} color={COLORS.textMuted} />
           </TouchableOpacity>
 
-          {/* --- NEW SECTION: DOWNLOAD PASSBOOK --- */}
-          <TouchableOpacity style={styles.menuItem} onPress={handleDownloadStatement} disabled={isDownloading}>
-            <View style={[styles.menuIconBox, { backgroundColor: '#e6f4ea' }]}><Ionicons name="download-outline" size={20} color="#137333" /></View>
-            <Text style={styles.menuText}>Download Complete Statement</Text>
-            {isDownloading ? <ActivityIndicator size="small" color="#137333" /> : <Ionicons name="chevron-forward" size={20} color="#ccc" />}
+          <Text style={styles.menuHeader}>{t('profile.support', 'Support & About')}</Text>
+
+          <TouchableOpacity style={styles.menuItem} onPress={() => setHelpModalVisible(true)}>
+            <View style={[styles.menuIconBox, { backgroundColor: '#dcfce7' }]}><Ionicons name="help-buoy" size={20} color="#16a34a" /></View>
+            <Text style={styles.menuText}>{t('profile.helpSupport', 'Help & Support / FAQ')}</Text>
+            <Ionicons name="chevron-forward" size={20} color={COLORS.textMuted} />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.menuItem} onPress={() => navigation.navigate('TermsScreen')}>
+            <View style={[styles.menuIconBox, { backgroundColor: '#f3e8ff' }]}><Ionicons name="shield" size={20} color="#9333ea" /></View>
+            <Text style={styles.menuText}>{t('profile.terms', 'Terms & Privacy Policy')}</Text>
+            <Ionicons name="chevron-forward" size={20} color={COLORS.textMuted} />
           </TouchableOpacity>
         </View>
 
         <View style={styles.bottomSection}>
           <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Ionicons name="log-out-outline" size={20} color="#dc3545" style={{ marginRight: 8 }} />
+            <Ionicons name="log-out-outline" size={20} color={COLORS.danger} style={{ marginRight: 8 }} />
             <Text style={styles.logoutText}>{t('profile.logout', 'Log Out')}</Text>
           </TouchableOpacity>
           <Text style={styles.versionText}>{t('profile.version', 'Bharat Bachat App v1.0.0')}</Text>
@@ -248,69 +473,197 @@ const ProfileScreen = ({ navigation }) => {
         <View style={{ height: 40 }} />
       </ScrollView>
 
+      {/* EDIT PROFILE MODAL */}
+      <Modal visible={editModalVisible} transparent={true} animationType="slide">
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{t('profile.editProfile', 'Edit Personal Details')}</Text>
+              <TouchableOpacity onPress={() => setEditModalVisible(false)}><Ionicons name="close" size={24} color={COLORS.textDark} /></TouchableOpacity>
+            </View>
+            
+            <Text style={styles.dateLabel}>{t('login.fullName', 'Full Name')}</Text>
+            <View style={styles.inputWrapper}>
+              <Ionicons name="person-outline" size={20} color={COLORS.textMuted} style={{marginRight: 10}} />
+              <TextInput style={styles.textInput} value={editName} onChangeText={setEditName} placeholder="Enter Full Name" />
+            </View>
+
+            <Text style={styles.dateLabel}>{t('login.mobileNumber', 'Mobile Number')}</Text>
+            <View style={styles.inputWrapper}>
+              <Ionicons name="call-outline" size={20} color={COLORS.textMuted} style={{marginRight: 10}} />
+              <TextInput style={styles.textInput} value={editPhone} onChangeText={setEditPhone} keyboardType="numeric" maxLength={10} placeholder="10 Digits" />
+            </View>
+
+            <TouchableOpacity style={[styles.generateBtn, isUpdatingProfile && { opacity: 0.7 }]} onPress={handleUpdateProfile} disabled={isUpdatingProfile}>
+              {isUpdatingProfile ? <ActivityIndicator color={COLORS.bgWhite} /> : <Text style={styles.generateBtnText}>{t('profile.saveChanges', 'Save Changes')}</Text>}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* EXPORT MODAL */}
+      <Modal visible={exportModalVisible} transparent={true} animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{t('exportLedger.modalTitle', 'Download Statement')}</Text>
+              <TouchableOpacity onPress={() => setExportModalVisible(false)}><Ionicons name="close" size={24} color={COLORS.textDark} /></TouchableOpacity>
+            </View>
+            <Text style={{color: COLORS.textGray, marginBottom: 20}}>{t('exportLedger.modalDesc', "Select a date range to filter and download your financial records.")}</Text>
+
+            <Text style={styles.dateLabel}>{t('exportLedger.startDate', 'Start Date')}</Text>
+            <TouchableOpacity style={styles.dateInput} onPress={() => setDatePickerTarget('start')}>
+              <Ionicons name="calendar-outline" size={20} color={COLORS.primaryBlue} style={{marginRight: 10}} />
+              <Text style={styles.dateText}>{startDate.toDateString()}</Text>
+            </TouchableOpacity>
+
+            <Text style={styles.dateLabel}>{t('exportLedger.endDate', 'End Date')}</Text>
+            <TouchableOpacity style={styles.dateInput} onPress={() => setDatePickerTarget('end')}>
+              <Ionicons name="calendar-outline" size={20} color={COLORS.primaryBlue} style={{marginRight: 10}} />
+              <Text style={styles.dateText}>{endDate.toDateString()}</Text>
+            </TouchableOpacity>
+
+            {datePickerTarget && (
+              <DateTimePicker value={datePickerTarget === 'start' ? startDate : endDate} mode="date" display={Platform.OS === 'ios' ? 'spinner' : 'default'} onChange={handleDateChange} maximumDate={new Date()} />
+            )}
+            {Platform.OS === 'ios' && datePickerTarget && (
+              <TouchableOpacity style={styles.doneBtn} onPress={() => setDatePickerTarget(null)}><Text style={{color: COLORS.primaryBlue, fontWeight: 'bold'}}>{t('exportLedger.done', 'Done')}</Text></TouchableOpacity>
+            )}
+
+            <TouchableOpacity style={[styles.generateBtn, isGenerating && { opacity: 0.7 }]} onPress={generateFilteredStatementPDF} disabled={isGenerating}>
+              {isGenerating ? <ActivityIndicator color={COLORS.bgWhite} /> : (
+                <><Ionicons name="download" size={20} color={COLORS.bgWhite} style={{marginRight: 8}} /><Text style={styles.generateBtnText}>{t('exportLedger.generateBtn', 'Generate PDF')}</Text></>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* LANGUAGE MODAL */}
       <Modal visible={langModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{t('profile.changeLanguage', 'Select Language')}</Text>
-              <TouchableOpacity onPress={() => setLangModalVisible(false)}><Ionicons name="close" size={24} color="#333" /></TouchableOpacity>
+              <TouchableOpacity onPress={() => setLangModalVisible(false)}><Ionicons name="close" size={24} color={COLORS.textDark} /></TouchableOpacity>
             </View>
-
             <TouchableOpacity style={styles.langOption} onPress={() => changeLanguage('en')}>
               <Text style={[styles.langText, i18n.language === 'en' && styles.langTextActive]}>English</Text>
-              {i18n.language === 'en' && <Ionicons name="checkmark-circle" size={24} color="#2952a3" />}
+              {i18n.language === 'en' && <Ionicons name="checkmark-circle" size={24} color={COLORS.primaryBlue} />}
             </TouchableOpacity>
             <TouchableOpacity style={styles.langOption} onPress={() => changeLanguage('mr')}>
               <Text style={[styles.langText, i18n.language === 'mr' && styles.langTextActive]}>Marathi (मराठी)</Text>
-              {i18n.language === 'mr' && <Ionicons name="checkmark-circle" size={24} color="#2952a3" />}
+              {i18n.language === 'mr' && <Ionicons name="checkmark-circle" size={24} color={COLORS.primaryBlue} />}
             </TouchableOpacity>
             <TouchableOpacity style={styles.langOption} onPress={() => changeLanguage('hi')}>
               <Text style={[styles.langText, i18n.language === 'hi' && styles.langTextActive]}>Hindi (हिंदी)</Text>
-              {i18n.language === 'hi' && <Ionicons name="checkmark-circle" size={24} color="#2952a3" />}
+              {i18n.language === 'hi' && <Ionicons name="checkmark-circle" size={24} color={COLORS.primaryBlue} />}
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
+
+      {/* HELP & SUPPORT FAQ MODAL */}
+      <Modal visible={helpModalVisible} transparent={true} animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { height: '90%', paddingBottom: 0 }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{t('dashboard.faqHelp', 'Help & Support')}</Text>
+              <TouchableOpacity onPress={() => setHelpModalVisible(false)}><Ionicons name="close" size={24} color={COLORS.textDark} /></TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{paddingBottom: 40}}>
+              
+              <View style={styles.aboutCard}>
+                <Ionicons name="information-circle" size={24} color="#0284c7" style={{marginBottom: 10}} />
+                <Text style={styles.helpText}>{t('about.p1', 'Bharat Bachat is a secure digital ledger designed specifically for Self-Help Groups (Bachat Gats).')}</Text>
+                <Text style={styles.helpText}>{t('about.p2', 'Our mission is to replace easily-lost paper passbooks with a fully transparent, offline-capable mobile application.')}</Text>
+              </View>
+
+              <Text style={styles.faqCategoryTitle}>{t('faq.catGroups', '🏢 Group Management')}</Text>
+              {renderFaqItem('q1', 'faq.q1', 'faq.a1')}
+              {renderFaqItem('q2', 'faq.q2', 'faq.a2')}
+
+              <Text style={styles.faqCategoryTitle}>{t('faq.catTx', '💰 Transactions & Savings')}</Text>
+              {renderFaqItem('q3', 'faq.q3', 'faq.a3')}
+              {renderFaqItem('q4', 'faq.q4', 'faq.a4')}
+
+              <Text style={styles.faqCategoryTitle}>{t('faq.catReports', '📄 Receipts & Reports')}</Text>
+              {renderFaqItem('q5', 'faq.q5', 'faq.a5')}
+              {renderFaqItem('q6', 'faq.q6', 'faq.a6')}
+
+              <Text style={styles.faqCategoryTitle}>{t('faq.catSecurity', '🔒 Security & Loans')}</Text>
+              {renderFaqItem('q7', 'faq.q7', 'faq.a7')}
+              {renderFaqItem('q8', 'faq.q8', 'faq.a8')}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f6f8' },
+  container: { flex: 1, backgroundColor: COLORS.bgLight },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { flexDirection: 'row', alignItems: 'center', padding: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
-  backButton: { marginRight: 15 },
-  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#333' },
-  profileCard: { backgroundColor: '#fff', alignItems: 'center', paddingTop: 30, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: '#eee', elevation: 1 },
-  avatarCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#eef2f9', justifyContent: 'center', alignItems: 'center', marginBottom: 15, borderWidth: 2, borderColor: '#d3e0f5' },
-  avatarText: { fontSize: 32, fontWeight: 'bold', color: '#2952a3' },
-  userName: { fontSize: 22, fontWeight: 'bold', color: '#333' },
-  userContact: { fontSize: 14, color: '#888', marginTop: 5 },
-  savingsBox: { backgroundColor: '#f4f6f8', marginTop: 20, paddingVertical: 15, paddingHorizontal: 40, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: '#eef2f9' },
-  savingsLabel: { color: '#888', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
-  savingsAmount: { color: '#2952a3', fontSize: 28, fontWeight: 'bold' },
-  badgeContainer: { marginTop: 20 },
-  badge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#e6f4ea', paddingHorizontal: 15, paddingVertical: 8, borderRadius: 20 },
-  badgeText: { color: '#137333', fontSize: 13, fontWeight: 'bold' },
-  shareContainer: { padding: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
-  shareButton: { flexDirection: 'row', backgroundColor: '#e67e22', paddingVertical: 14, borderRadius: 12, justifyContent: 'center', alignItems: 'center', elevation: 2 },
-  shareText: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
-  menuContainer: { backgroundColor: '#fff', marginTop: 15, paddingVertical: 10, elevation: 1 },
-  menuHeader: { fontSize: 14, fontWeight: 'bold', color: '#888', textTransform: 'uppercase', letterSpacing: 1, marginLeft: 20, marginBottom: 10, marginTop: 10 },
-  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  menuIconBox: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#eef2f9', justifyContent: 'center', alignItems: 'center', marginRight: 15 },
-  menuText: { flex: 1, fontSize: 16, color: '#333', fontWeight: '500' },
+  header: { flexDirection: 'row', alignItems: 'center', padding: 20, backgroundColor: COLORS.bgWhite, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight, paddingTop: 60 },
+  headerTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.textDark, textAlign: 'center', width: '100%' },
+  
+  profileHeaderCard: { alignItems: 'center', backgroundColor: COLORS.bgWhite, paddingVertical: 30, paddingHorizontal: 20, borderBottomLeftRadius: 30, borderBottomRightRadius: 30, elevation: 4, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, marginBottom: 20 },
+  
+  // NEW AVATAR STYLES
+  avatarCircle: { width: 90, height: 90, borderRadius: 45, backgroundColor: COLORS.primaryBlueLight, justifyContent: 'center', alignItems: 'center', marginBottom: 15, position: 'relative', overflow: 'visible' },
+  avatarImage: { width: 90, height: 90, borderRadius: 45 },
+  avatarText: { fontSize: 36, fontWeight: 'bold', color: COLORS.primaryBlue },
+  editAvatarBtn: { position: 'absolute', bottom: -2, right: -2, backgroundColor: COLORS.primaryBlue, width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center', borderWidth: 3, borderColor: COLORS.bgWhite, zIndex: 10 },
+  
+  userName: { fontSize: 24, fontWeight: 'bold', color: COLORS.textDark, marginBottom: 5 },
+  userPhone: { fontSize: 16, color: COLORS.textMuted, marginBottom: 15, letterSpacing: 1 },
+  joinedBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#e6f4ea', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  joinedText: { marginLeft: 5, fontSize: 12, fontWeight: 'bold', color: COLORS.success },
+
+  shareContainer: { paddingHorizontal: 20, marginBottom: 15 },
+  shareButton: { flexDirection: 'row', backgroundColor: COLORS.warning, paddingVertical: 14, borderRadius: 12, justifyContent: 'center', alignItems: 'center', elevation: 2 },
+  shareText: { color: COLORS.bgWhite, fontSize: 15, fontWeight: 'bold' },
+  
+  menuContainer: { backgroundColor: COLORS.bgWhite, marginHorizontal: 20, borderRadius: 16, padding: 15, elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5, shadowOffset: { width: 0, height: 2 } },
+  menuHeader: { fontSize: 13, fontWeight: 'bold', color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 1, marginTop: 10, marginBottom: 10, marginLeft: 5 },
+  menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  menuIconBox: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.bgLight, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+  menuText: { flex: 1, fontSize: 16, color: COLORS.textDark, fontWeight: '500' },
+  
   bottomSection: { marginTop: 30, paddingHorizontal: 20, alignItems: 'center' },
   logoutButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ffe6e6', width: '100%', paddingVertical: 15, borderRadius: 12, justifyContent: 'center', borderWidth: 1, borderColor: '#fad2cf' },
-  logoutText: { color: '#dc3545', fontSize: 16, fontWeight: 'bold' },
-  versionText: { color: '#aaa', fontSize: 12, marginTop: 20 },
+  logoutText: { color: COLORS.danger, fontSize: 16, fontWeight: 'bold' },
+  versionText: { color: COLORS.textMuted, fontSize: 12, marginTop: 20 },
+  
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
+  modalContent: { backgroundColor: COLORS.bgWhite, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#333' },
-  langOption: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  langText: { fontSize: 18, color: '#333' },
-  langTextActive: { fontWeight: 'bold', color: '#2952a3' }
+  modalTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.textDark },
+  dateLabel: { fontSize: 14, fontWeight: 'bold', color: COLORS.textDark, marginBottom: 8 },
+  dateInput: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bgLight, borderWidth: 1, borderColor: COLORS.borderLight, padding: 15, borderRadius: 12, marginBottom: 20 },
+  dateText: { fontSize: 16, color: COLORS.textDark },
+  doneBtn: { alignSelf: 'flex-end', marginBottom: 20 },
+  generateBtn: { flexDirection: 'row', backgroundColor: COLORS.primaryBlue, padding: 16, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginTop: 10 },
+  generateBtnText: { color: COLORS.bgWhite, fontSize: 16, fontWeight: 'bold' },
+  
+  inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bgLight, borderWidth: 1, borderColor: COLORS.borderLight, paddingHorizontal: 15, borderRadius: 12, marginBottom: 20, height: 55 },
+  textInput: { flex: 1, fontSize: 16, color: COLORS.textDark },
+
+  langOption: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
+  langText: { fontSize: 18, color: COLORS.textDark },
+  langTextActive: { fontWeight: 'bold', color: COLORS.primaryBlue },
+
+  aboutCard: { backgroundColor: '#f0f9ff', padding: 20, borderRadius: 16, borderWidth: 1, borderColor: '#bae6fd', marginBottom: 20 },
+  helpText: { fontSize: 14, color: '#0369a1', lineHeight: 22, marginBottom: 10, fontWeight: '500' },
+  faqCategoryTitle: { fontSize: 13, fontWeight: 'bold', color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 1.2, marginTop: 10, marginBottom: 10 },
+  faqBox: { backgroundColor: COLORS.bgLight, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: COLORS.borderLight, overflow: 'hidden' },
+  faqBoxActive: { borderColor: COLORS.primaryBlueLight, backgroundColor: '#f0f7ff' },
+  faqQRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
+  faqQ: { fontSize: 15, fontWeight: '600', color: COLORS.textDark, flex: 1, paddingRight: 10, lineHeight: 22 },
+  faqAContainer: { padding: 16, paddingTop: 0, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)' },
+  faqA: { fontSize: 14, color: COLORS.textGray, lineHeight: 24, marginTop: 12 }
 });
 
 export default ProfileScreen;

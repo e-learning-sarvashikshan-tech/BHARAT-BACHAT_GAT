@@ -1,19 +1,25 @@
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next'; 
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context'; 
+import { Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import api from '../services/api';
+import { COLORS } from '../constants/theme'; // <-- BRAND THEME IMPORTED
 
 const CreateGroupScreen = ({ navigation }) => {
+  const { t } = useTranslation();
   const [groupName, setGroupName] = useState('');
   const [contribution, setContribution] = useState('500'); // Default ₹500
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [nameError, setNameError] = useState(false); 
 
   const handleCreateGroup = async () => {
-    // 1. Frontend Validation
+    setNameError(false); 
+
     if (!groupName.trim()) {
-      Alert.alert("Error", "Please enter a group name.");
+      Alert.alert(t('common.error', 'Error'), "Please enter a Gat name.");
+      setNameError(true);
       return;
     }
 
@@ -30,34 +36,54 @@ const CreateGroupScreen = ({ navigation }) => {
 
       if (response.data.status === 'success') {
         Alert.alert(
-          "Success!", 
-          `Group '${response.data.group.name}' created. Invite Code: ${response.data.group.invite_code}`
+          t('common.success', 'Success!'), 
+          `Group '${response.data.group.name}' created.\nInvite Code: ${response.data.group.invite_code}`,
+          [{ text: "OK", onPress: () => navigation.goBack() }]
         );
-        navigation.goBack(); 
       }
     } catch (error) {
-      console.error("Create Group Error:", error.response?.data || error.message);
-      Alert.alert("Error", error.response?.data?.message || "Failed to create group. Check the server logs.");
+      if (error.response?.status === 409) {
+        setNameError(true); 
+        Alert.alert(
+          "Name Already Taken", 
+          error.response.data.message || "This group name already exists. Please choose a unique name."
+        );
+      } else {
+        Alert.alert(t('common.error', 'Error'), error.response?.data?.message || "Failed to create group. Check your connection.");
+      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['bottom', 'left', 'right']}>
       <View style={styles.formContainer}>
+        
+        <View style={styles.headerInfo}>
+          <Ionicons name="people-circle" size={50} color={COLORS.primaryBlue} />
+          <Text style={styles.headerText}>Start a New Bachat Gat</Text>
+          <Text style={styles.subHeaderText}>You will automatically become the Admin of this new group.</Text>
+        </View>
+
         <Text style={styles.label}>Bachat Gat Name</Text>
         <TextInput 
-          style={styles.input} 
+          style={[styles.input, nameError && styles.inputError]} 
           placeholder="e.g., Mahila Bachat Gat Aundh"
+          placeholderTextColor={COLORS.textMuted}
           value={groupName}
-          onChangeText={setGroupName}
+          onChangeText={(text) => {
+            setGroupName(text);
+            setNameError(false); 
+          }}
         />
+        {nameError && <Text style={styles.errorHint}>Please choose a different name.</Text>}
 
         <Text style={styles.label}>Monthly Saving Amount (₹)</Text>
         <TextInput 
           style={styles.input} 
           placeholder="500"
+          placeholderTextColor={COLORS.textMuted}
           keyboardType="numeric"
           value={contribution}
           onChangeText={setContribution}
@@ -69,7 +95,7 @@ const CreateGroupScreen = ({ navigation }) => {
           disabled={loading}
         >
           {loading ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={COLORS.bgWhite} />
           ) : (
             <Text style={styles.createButtonText}>Create Group</Text>
           )}
@@ -80,13 +106,18 @@ const CreateGroupScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f6f8' },
+  container: { flex: 1, backgroundColor: COLORS.bgLight },
   formContainer: { padding: 20, marginTop: 10 },
-  label: { fontSize: 16, fontWeight: 'bold', color: '#555', marginBottom: 8, marginTop: 15 },
-  input: { backgroundColor: '#fff', padding: 15, borderRadius: 12, fontSize: 16, borderWidth: 1, borderColor: '#ddd', elevation: 1 },
-  createButton: { backgroundColor: '#2952a3', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 35, elevation: 3 },
-  disabledButton: { backgroundColor: '#8aa6d8' },
-  createButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' }
+  headerInfo: { alignItems: 'center', marginBottom: 30, backgroundColor: COLORS.bgWhite, padding: 20, borderRadius: 16, elevation: 1 },
+  headerText: { fontSize: 20, fontWeight: 'bold', color: COLORS.textDark, marginTop: 10 },
+  subHeaderText: { fontSize: 13, color: COLORS.textGray, textAlign: 'center', marginTop: 5, lineHeight: 18 },
+  label: { fontSize: 15, fontWeight: 'bold', color: COLORS.textGray, marginBottom: 8, marginTop: 15 },
+  input: { backgroundColor: COLORS.bgWhite, padding: 15, borderRadius: 12, fontSize: 16, borderWidth: 1, borderColor: COLORS.primaryBlueLight, elevation: 1, color: COLORS.textDark },
+  inputError: { borderColor: COLORS.danger, backgroundColor: '#fffafa', borderWidth: 1.5 },
+  errorHint: { color: COLORS.danger, fontSize: 12, marginTop: 4, marginLeft: 4, fontWeight: '600' },
+  createButton: { backgroundColor: COLORS.primaryBlue, padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 35, elevation: 3 },
+  disabledButton: { opacity: 0.7 },
+  createButtonText: { color: COLORS.bgWhite, fontSize: 16, fontWeight: 'bold' }
 });
 
 export default CreateGroupScreen;

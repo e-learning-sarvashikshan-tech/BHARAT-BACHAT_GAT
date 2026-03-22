@@ -8,6 +8,7 @@ import * as SecureStore from 'expo-secure-store';
 import Slider from '@react-native-community/slider';
 import * as Speech from 'expo-speech'; 
 import api from '../services/api';
+import { COLORS } from '../constants/theme'; 
 
 const LoanHubScreen = ({ route, navigation }) => {
   const { t, i18n } = useTranslation(); 
@@ -25,6 +26,9 @@ const LoanHubScreen = ({ route, navigation }) => {
   const defaultGroupInterest = parseFloat(groupDetails?.interest_rate) || 2;
   const [amount, setAmount] = useState(5000);
   const [duration, setDuration] = useState(6);
+  
+  // --- NEW: PROPOSED INTEREST STATE ---
+  const [proposedInterest, setProposedInterest] = useState('');
 
   const [rejectModalVisible, setRejectModalVisible] = useState(false);
   const [rejectingLoanId, setRejectingLoanId] = useState(null);
@@ -33,14 +37,15 @@ const LoanHubScreen = ({ route, navigation }) => {
   const [repayModalVisible, setRepayModalVisible] = useState(false);
   const [repayingLoanId, setRepayingLoanId] = useState(null);
   const [repayAmount, setRepayAmount] = useState('');
-  // --- NEW: STATE TO HOLD THE MAXIMUM ALLOWED PAYMENT ---
   const [repayMaxAmount, setRepayMaxAmount] = useState(0);
 
   const [approveModalVisible, setApproveModalVisible] = useState(false);
   const [approvingLoan, setApprovingLoan] = useState(null);
   const [customInterest, setCustomInterest] = useState('');
 
-  const monthlyEMI = (amount + (amount * (defaultGroupInterest / 100) * duration)) / duration;
+  // --- UPGRADED: DYNAMIC EMI CALCULATION ---
+  const effectiveInterest = proposedInterest !== '' && !isNaN(proposedInterest) ? parseFloat(proposedInterest) : defaultGroupInterest;
+  const monthlyEMI = (amount + (amount * (effectiveInterest / 100) * duration)) / duration;
 
   const fetchLoans = useCallback(async () => {
     try {
@@ -66,9 +71,18 @@ const LoanHubScreen = ({ route, navigation }) => {
     setSubmitting(true);
     try {
       const token = await SecureStore.getItemAsync('userToken');
-      await api.post(`/group/${groupId}/loan/request`, { principal_amount: amount, duration_months: duration }, { headers: { Authorization: `Bearer ${token}` } });
+      
+      // --- UPGRADED: PAYLOAD INCLUDES PROPOSED INTEREST ---
+      const payload = {
+        principal_amount: amount,
+        duration_months: duration,
+        proposed_interest_rate: effectiveInterest
+      };
+
+      await api.post(`/group/${groupId}/loan/request`, payload, { headers: { Authorization: `Bearer ${token}` } });
       Alert.alert(t('common.success', "Success"), t('alerts.loanRequested', "Loan request submitted!"));
       setActiveTab('pending'); 
+      setProposedInterest(''); // Reset field after success
       fetchLoans();
     } catch (error) {
       Alert.alert(t('common.error', "Error"), error.response?.data?.message || t('alerts.loanRequestFailed', "Failed to request loan."));
@@ -79,7 +93,8 @@ const LoanHubScreen = ({ route, navigation }) => {
 
   const openApproveModal = (loan) => {
     setApprovingLoan(loan);
-    setCustomInterest(loan.interest_rate.toString()); 
+    // If the user proposed an interest rate, pre-fill it for the Admin! Otherwise, use default.
+    setCustomInterest(loan.interest_rate ? loan.interest_rate.toString() : defaultGroupInterest.toString()); 
     setApproveModalVisible(true);
   };
 
@@ -132,14 +147,12 @@ const LoanHubScreen = ({ route, navigation }) => {
     }
   };
 
-  // --- NEW: SMART REPAYMENT SUBMISSION ---
   const submitRepayment = async () => {
     const numAmount = Number(repayAmount);
     if (!repayAmount || isNaN(numAmount) || numAmount <= 0) {
       return Alert.alert(t('common.error', "Error"), t('alerts.invalidAmountError', "Enter a valid amount."));
     }
 
-    // STRICT VALIDATION: Cannot pay more than what is pending!
     if (numAmount > Math.ceil(repayMaxAmount)) {
       return Alert.alert(
         t('common.error', "Error"), 
@@ -169,7 +182,6 @@ const LoanHubScreen = ({ route, navigation }) => {
     const totalDue = principal + (principal * (rate / 100) * months);
     const emiAmount = totalDue / months;
     
-    // Calculate precise bounds
     const pendingBalance = totalDue - amountPaid;
     const fullEmisPaid = Math.floor(amountPaid / emiAmount);
     const progress = Math.min((amountPaid / totalDue) * 100, 100);
@@ -217,19 +229,19 @@ const LoanHubScreen = ({ route, navigation }) => {
 
         {loan.status === 'rejected' && loan.rejection_reason && (
           <View style={styles.rejectionBox}>
-            <Ionicons name="warning" size={16} color="#dc3545" style={{marginRight: 6}}/>
+            <Ionicons name="warning" size={16} color={COLORS.danger} style={{marginRight: 6}}/>
             <Text style={styles.rejectionText}>{t('loanHub.reason', 'Reason')}: {loan.rejection_reason}</Text>
           </View>
         )}
 
         {isAdmin && loan.status === 'pending' && (
           <View style={styles.actionRow}>
-            <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#fce8e6' }]} onPress={() => { setRejectingLoanId(loan.id); setRejectModalVisible(true); }}>
-              <Text style={{color: '#c5221f', fontWeight: 'bold'}}>{t('common.cancel', 'Reject')}</Text>
+            <TouchableOpacity style={[styles.actionBtn, { borderColor: COLORS.danger, borderWidth: 1 }]} onPress={() => { setRejectingLoanId(loan.id); setRejectModalVisible(true); }}>
+              <Text style={{color: COLORS.danger, fontWeight: 'bold'}}>{t('common.cancel', 'Reject')}</Text>
             </TouchableOpacity>
             
-            <TouchableOpacity style={[styles.actionBtn, { backgroundColor: '#e6f4ea' }]} onPress={() => openApproveModal(loan)}>
-              <Text style={{color: '#137333', fontWeight: 'bold'}}>{t('groupDetails.approveBtn', 'Approve')}</Text>
+            <TouchableOpacity style={[styles.actionBtn, { backgroundColor: COLORS.success }]} onPress={() => openApproveModal(loan)}>
+              <Text style={{color: COLORS.bgWhite, fontWeight: 'bold'}}>{t('groupDetails.approveBtn', 'Approve')}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -238,16 +250,14 @@ const LoanHubScreen = ({ route, navigation }) => {
           <TouchableOpacity 
             style={styles.repayBtn} 
             onPress={() => { 
-              // --- NEW: SMART PRE-FILL LOGIC ---
               setRepayingLoanId(loan.id); 
               setRepayMaxAmount(pendingBalance);
-              // Pre-fill the input with the EMI amount, or the remaining balance if it's the last payment!
               const suggestedPayment = Math.ceil(Math.min(emiAmount, pendingBalance));
               setRepayAmount(suggestedPayment.toString());
               setRepayModalVisible(true); 
             }}
           >
-            <Ionicons name="cash-outline" size={18} color="#fff" style={{marginRight: 8}} />
+            <Ionicons name="cash-outline" size={18} color={COLORS.bgWhite} style={{marginRight: 8}} />
             <Text style={styles.repayBtnText}>{t('loanHub.recordRepayment', 'Record Installment')}</Text>
           </TouchableOpacity>
         )}
@@ -255,36 +265,51 @@ const LoanHubScreen = ({ route, navigation }) => {
     );
   };
 
-  if (loading && !loans.active.length) return <View style={styles.centered}><ActivityIndicator size="large" color="#2952a3" /></View>;
+  if (loading && !loans.active.length) return <View style={styles.centered}><ActivityIndicator size="large" color={COLORS.primaryBlue} /></View>;
 
   const currentTabLoans = loans[activeTab] || [];
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}><Ionicons name="arrow-back" size={24} color="#333" /></TouchableOpacity>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}><Ionicons name="arrow-back" size={24} color={COLORS.textDark} /></TouchableOpacity>
         <Text style={styles.headerTitle}>{t('loanHub.title', 'Loan Hub')}</Text>
       </View>
 
       <ScrollView 
         style={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#2952a3']} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primaryBlue]} />}
       >
         <View style={styles.calculatorSection}>
           <Text style={styles.sectionTitle}>{t('loanHub.estimator', 'Loan Estimator')}</Text>
+          
           <View style={styles.sliderHeader}><Text style={styles.label}>{t('loanHub.principal', 'Principal')}</Text><Text style={styles.sliderValue}>₹{amount.toLocaleString()}</Text></View>
-          <Slider style={{width: '100%', height: 40}} minimumValue={1000} maximumValue={maxGroupLoan} step={500} value={amount} onValueChange={setAmount} minimumTrackTintColor="#e67e22" maximumTrackTintColor="#d3d3d3" thumbTintColor="#e67e22" />
+          <Slider style={{width: '100%', height: 40}} minimumValue={1000} maximumValue={maxGroupLoan} step={500} value={amount} onValueChange={setAmount} minimumTrackTintColor={COLORS.warning} maximumTrackTintColor={COLORS.borderLight} thumbTintColor={COLORS.warning} />
           
           <View style={[styles.sliderHeader, { marginTop: 15 }]}><Text style={styles.label}>{t('loanHub.duration', 'Duration')}</Text><Text style={styles.sliderValue}>{duration} {t('loanHub.months', 'Months')}</Text></View>
-          <Slider style={{width: '100%', height: 40}} minimumValue={1} maximumValue={24} step={1} value={duration} onValueChange={setDuration} minimumTrackTintColor="#2952a3" maximumTrackTintColor="#d3d3d3" thumbTintColor="#2952a3" />
+          <Slider style={{width: '100%', height: 40}} minimumValue={1} maximumValue={24} step={1} value={duration} onValueChange={setDuration} minimumTrackTintColor={COLORS.primaryBlue} maximumTrackTintColor={COLORS.borderLight} thumbTintColor={COLORS.primaryBlue} />
+
+          {/* --- NEW: PROPOSED INTEREST FIELD --- */}
+          <View style={[styles.sliderHeader, { marginTop: 15 }]}><Text style={styles.label}>{t('loanHub.proposedInterest', 'Proposed Interest Rate (%)')}</Text></View>
+          <View style={styles.inputWrapper}>
+            <Ionicons name="pie-chart-outline" size={20} color={COLORS.textMuted} style={{marginRight: 10}} />
+            <TextInput
+              style={styles.textInput}
+              value={proposedInterest}
+              onChangeText={setProposedInterest}
+              placeholder={`Default is ${defaultGroupInterest}%`}
+              placeholderTextColor={COLORS.textMuted}
+              keyboardType="numeric"
+            />
+          </View>
 
           <View style={styles.emiCard}>
-            <Text style={styles.emiTitle}>{t('loanHub.estEmi', 'Est. Monthly EMI')} (@ {defaultGroupInterest}% / mo)</Text>
+            <Text style={styles.emiTitle}>{t('loanHub.estEmi', 'Est. Monthly EMI')} (@ {effectiveInterest}% / mo)</Text>
             <Text style={styles.emiValue}>₹{Math.ceil(monthlyEMI).toLocaleString()}</Text>
           </View>
 
           <TouchableOpacity style={[styles.submitButton, submitting && styles.disabledButton]} onPress={handleRequestLoan} disabled={submitting}>
-            {submitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitButtonText}>{t('loanHub.applyBtn', 'Ask for Loan')}</Text>}
+            {submitting ? <ActivityIndicator color={COLORS.bgWhite} /> : <Text style={styles.submitButtonText}>{t('loanHub.applyBtn', 'Ask for Loan')}</Text>}
           </TouchableOpacity>
         </View>
 
@@ -304,14 +329,14 @@ const LoanHubScreen = ({ route, navigation }) => {
         <View style={{height: 40}}/>
       </ScrollView>
 
-      {/* ADMIN APPROVAL MODAL */}
+      {/* MODALS REMAIN EXACTLY THE SAME... */}
       <Modal visible={approveModalVisible} transparent={true} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t('loanHub.reviewTitle', 'Review Loan Details')}</Text>
-            <Text style={{color: '#666', marginBottom: 15}}>{t('loanHub.approvingFor', 'Approving for')} <Text style={{fontWeight: 'bold', color: '#333'}}>{approvingLoan?.user?.name}</Text>.</Text>
+            <Text style={{color: COLORS.textGray, marginBottom: 15}}>{t('loanHub.approvingFor', 'Approving for')} <Text style={{fontWeight: 'bold', color: COLORS.textDark}}>{approvingLoan?.user?.name}</Text>.</Text>
             
-            <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15, paddingBottom: 15, borderBottomWidth: 1, borderColor: '#eee'}}>
+            <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15, paddingBottom: 15, borderBottomWidth: 1, borderColor: COLORS.borderLight}}>
                 <Text style={styles.labelSmall}>{t('loanHub.principal', 'Principal:')}</Text>
                 <Text style={styles.bold}>₹{approvingLoan?.principal_amount}</Text>
             </View>
@@ -322,42 +347,40 @@ const LoanHubScreen = ({ route, navigation }) => {
               keyboardType="numeric"
               value={customInterest}
               onChangeText={setCustomInterest} 
+              color={COLORS.textDark}
             />
             
             <View style={styles.modalActionRow}>
-              <TouchableOpacity onPress={() => setApproveModalVisible(false)} style={{padding: 10}}><Text>{t('common.cancel', 'Cancel')}</Text></TouchableOpacity>
-              <TouchableOpacity onPress={submitApproval} style={[styles.modalSubmitBtn, {backgroundColor: '#28a745'}]}>
-                <Text style={{color: '#fff', fontWeight: 'bold'}}>{t('common.submit', 'Confirm')}</Text>
+              <TouchableOpacity onPress={() => setApproveModalVisible(false)} style={{padding: 10}}><Text style={{color: COLORS.textDark}}>{t('common.cancel', 'Cancel')}</Text></TouchableOpacity>
+              <TouchableOpacity onPress={submitApproval} style={[styles.modalSubmitBtn, {backgroundColor: COLORS.success}]}>
+                <Text style={{color: COLORS.bgWhite, fontWeight: 'bold'}}>{t('common.submit', 'Confirm')}</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* REJECTION MODAL */}
       <Modal visible={rejectModalVisible} transparent={true} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t('loanHub.reason', 'Reason')}</Text>
-            <TextInput style={styles.modalInput} multiline onChangeText={setRejectionReason} placeholder="Explain why..." />
+            <TextInput style={styles.modalInput} multiline onChangeText={setRejectionReason} placeholder="Explain why..." placeholderTextColor={COLORS.textMuted} color={COLORS.textDark} />
             <View style={styles.modalActionRow}>
-              <TouchableOpacity onPress={() => setRejectModalVisible(false)} style={{padding: 10}}><Text>{t('common.cancel', 'Cancel')}</Text></TouchableOpacity>
-              <TouchableOpacity onPress={submitRejection} style={[styles.modalSubmitBtn, {backgroundColor: '#dc3545'}]}><Text style={{color: '#fff', fontWeight: 'bold'}}>{t('common.submit', 'Submit')}</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => setRejectModalVisible(false)} style={{padding: 10}}><Text style={{color: COLORS.textDark}}>{t('common.cancel', 'Cancel')}</Text></TouchableOpacity>
+              <TouchableOpacity onPress={submitRejection} style={[styles.modalSubmitBtn, {backgroundColor: COLORS.danger}]}><Text style={{color: COLORS.bgWhite, fontWeight: 'bold'}}>{t('common.submit', 'Submit')}</Text></TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* SMART REPAYMENT MODAL */}
       <Modal visible={repayModalVisible} transparent={true} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t('loanHub.recordRepayment', 'Record Installment')}</Text>
             
-            {/* NEW: Helper Text for Admin */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10, padding: 10, backgroundColor: '#f0fdf4', borderRadius: 8, borderWidth: 1, borderColor: '#dcfce7' }}>
-              <Text style={{color: '#166534', fontSize: 12}}>Pending Balance:</Text>
-              <Text style={{color: '#15803d', fontSize: 14, fontWeight: 'bold'}}>₹{Math.ceil(repayMaxAmount)}</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10, padding: 10, backgroundColor: COLORS.bgLight, borderRadius: 8, borderWidth: 1, borderColor: COLORS.borderLight }}>
+              <Text style={{color: COLORS.textGray, fontSize: 12}}>Pending Balance:</Text>
+              <Text style={{color: COLORS.success, fontSize: 14, fontWeight: 'bold'}}>₹{Math.ceil(repayMaxAmount)}</Text>
             </View>
 
             <Text style={styles.labelSmall}>{t('loanHub.enterAmount', 'Enter the amount received (₹):')}</Text>
@@ -366,10 +389,11 @@ const LoanHubScreen = ({ route, navigation }) => {
               keyboardType="numeric"
               value={repayAmount}
               onChangeText={setRepayAmount} 
+              color={COLORS.textDark}
             />
             <View style={styles.modalActionRow}>
-              <TouchableOpacity onPress={() => setRepayModalVisible(false)} style={{padding: 10}}><Text>{t('common.cancel', 'Cancel')}</Text></TouchableOpacity>
-              <TouchableOpacity onPress={submitRepayment} style={[styles.modalSubmitBtn, {backgroundColor: '#28a745'}]}><Text style={{color: '#fff', fontWeight: 'bold'}}>{t('common.submit', 'Save')}</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => setRepayModalVisible(false)} style={{padding: 10}}><Text style={{color: COLORS.textDark}}>{t('common.cancel', 'Cancel')}</Text></TouchableOpacity>
+              <TouchableOpacity onPress={submitRepayment} style={[styles.modalSubmitBtn, {backgroundColor: COLORS.success}]}><Text style={{color: COLORS.bgWhite, fontWeight: 'bold'}}>{t('common.submit', 'Save')}</Text></TouchableOpacity>
             </View>
           </View>
         </View>
@@ -380,62 +404,67 @@ const LoanHubScreen = ({ route, navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f6f8' },
+  container: { flex: 1, backgroundColor: COLORS.bgLight },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { flexDirection: 'row', alignItems: 'center', padding: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
+  header: { flexDirection: 'row', alignItems: 'center', padding: 20, backgroundColor: COLORS.bgWhite, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
   backButton: { marginRight: 15 },
-  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#333' },
+  headerTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.textDark },
   content: { padding: 20 },
-  calculatorSection: { backgroundColor: '#fff', padding: 20, borderRadius: 16, marginBottom: 20, elevation: 2 },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 15 },
+  calculatorSection: { backgroundColor: COLORS.bgWhite, padding: 20, borderRadius: 16, marginBottom: 20, elevation: 2 },
+  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.textDark, marginBottom: 15 },
   sliderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 },
-  label: { fontSize: 14, fontWeight: 'bold', color: '#555' },
-  sliderValue: { fontSize: 18, fontWeight: 'bold', color: '#2952a3' },
-  emiCard: { backgroundColor: '#f9fafc', padding: 15, borderRadius: 12, marginTop: 20, borderWidth: 1, borderColor: '#eef2f9', alignItems: 'center' },
-  emiTitle: { fontSize: 13, color: '#666', textTransform: 'uppercase', letterSpacing: 1 },
-  emiValue: { fontSize: 32, fontWeight: 'bold', color: '#e67e22', marginVertical: 5 },
-  submitButton: { backgroundColor: '#2952a3', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 20 },
-  disabledButton: { backgroundColor: '#8b9fcb' },
-  submitButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  label: { fontSize: 14, fontWeight: 'bold', color: COLORS.textGray },
+  sliderValue: { fontSize: 18, fontWeight: 'bold', color: COLORS.primaryBlue },
   
-  tabsContainer: { flexDirection: 'row', backgroundColor: '#fff', borderRadius: 10, padding: 4, elevation: 1, minWidth: '100%' },
+  // --- NEW STYLES FOR INTEREST INPUT ---
+  inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bgLight, borderWidth: 1, borderColor: COLORS.borderLight, paddingHorizontal: 15, borderRadius: 12, height: 50, marginTop: 5 },
+  textInput: { flex: 1, fontSize: 16, color: COLORS.textDark },
+
+  emiCard: { backgroundColor: COLORS.bgLight, padding: 15, borderRadius: 12, marginTop: 20, borderWidth: 1, borderColor: COLORS.borderLight, alignItems: 'center' },
+  emiTitle: { fontSize: 13, color: COLORS.textGray, textTransform: 'uppercase', letterSpacing: 1 },
+  emiValue: { fontSize: 32, fontWeight: 'bold', color: COLORS.warning, marginVertical: 5 },
+  submitButton: { backgroundColor: COLORS.primaryBlue, padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 20 },
+  disabledButton: { opacity: 0.6 },
+  submitButtonText: { color: COLORS.bgWhite, fontSize: 16, fontWeight: 'bold' },
+  
+  tabsContainer: { flexDirection: 'row', backgroundColor: COLORS.bgWhite, borderRadius: 10, padding: 4, elevation: 1, minWidth: '100%' },
   tabButton: { paddingHorizontal: 16, paddingVertical: 12, alignItems: 'center', borderRadius: 8 },
-  activeTabButton: { backgroundColor: '#2952a3' },
-  tabText: { fontWeight: 'bold', color: '#666', fontSize: 12 },
-  activeTabText: { color: '#fff' },
+  activeTabButton: { backgroundColor: COLORS.primaryBlue },
+  tabText: { fontWeight: 'bold', color: COLORS.textGray, fontSize: 12 },
+  activeTabText: { color: COLORS.bgWhite },
 
   section: { marginBottom: 20 },
-  loanCard: { backgroundColor: '#fff', padding: 16, borderRadius: 12, marginBottom: 15, elevation: 2 },
+  loanCard: { backgroundColor: COLORS.bgWhite, padding: 16, borderRadius: 12, marginBottom: 15, elevation: 2 },
   loanHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  loanUser: { fontSize: 18, fontWeight: 'bold', color: '#333' },
-  loanDate: { fontSize: 12, color: '#999' },
-  loanDetailsRow: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#f9f9f9', padding: 10, borderRadius: 8, marginTop: 5 },
-  labelSmall: { fontSize: 11, color: '#888', marginBottom: 2 },
-  bold: { fontWeight: 'bold', color: '#333', fontSize: 14 },
+  loanUser: { fontSize: 18, fontWeight: 'bold', color: COLORS.textDark },
+  loanDate: { fontSize: 12, color: COLORS.textMuted },
+  loanDetailsRow: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: COLORS.bgLight, padding: 10, borderRadius: 8, marginTop: 5 },
+  labelSmall: { fontSize: 11, color: COLORS.textMuted, marginBottom: 2 },
+  bold: { fontWeight: 'bold', color: COLORS.textDark, fontSize: 14 },
   
-  emiTrackerContainer: { marginTop: 15, backgroundColor: '#fdf7f2', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#fae3ce' },
+  emiTrackerContainer: { marginTop: 15, backgroundColor: COLORS.bgWhite, padding: 12, borderRadius: 8, borderWidth: 1, borderColor: COLORS.warning },
   emiHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  emiAmountText: { fontSize: 16, fontWeight: 'bold', color: '#e67e22' },
-  emiPill: { backgroundColor: '#e67e22', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
-  emiPillText: { color: '#fff', fontSize: 10, fontWeight: 'bold' },
+  emiAmountText: { fontSize: 16, fontWeight: 'bold', color: COLORS.warning },
+  emiPill: { backgroundColor: COLORS.warning, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
+  emiPillText: { color: COLORS.bgWhite, fontSize: 10, fontWeight: 'bold' },
 
-  progressBarContainer: { height: 8, backgroundColor: '#e9ecef', borderRadius: 4, overflow: 'hidden' },
-  progressBar: { height: '100%', backgroundColor: '#28a745' },
-  progressText: { fontSize: 12, color: '#666', fontWeight: 'bold' },
+  progressBarContainer: { height: 8, backgroundColor: COLORS.borderLight, borderRadius: 4, overflow: 'hidden' },
+  progressBar: { height: '100%', backgroundColor: COLORS.success },
+  progressText: { fontSize: 12, color: COLORS.textGray, fontWeight: 'bold' },
 
   actionRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 15, gap: 10 },
   actionBtn: { flex: 1, padding: 12, borderRadius: 8, alignItems: 'center' },
-  repayBtn: { backgroundColor: '#28a745', flexDirection: 'row', padding: 12, borderRadius: 8, marginTop: 15, alignItems: 'center', justifyContent: 'center' },
-  repayBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
-  emptyText: { textAlign: 'center', color: '#888', marginTop: 20 },
+  repayBtn: { backgroundColor: COLORS.success, flexDirection: 'row', padding: 12, borderRadius: 8, marginTop: 15, alignItems: 'center', justifyContent: 'center' },
+  repayBtnText: { color: COLORS.bgWhite, fontWeight: 'bold', fontSize: 15 },
+  emptyText: { textAlign: 'center', color: COLORS.textMuted, marginTop: 20 },
   
-  rejectionBox: { flexDirection: 'row', backgroundColor: '#fff5f5', padding: 10, borderRadius: 8, marginTop: 10, borderWidth: 1, borderColor: '#ffdce0', alignItems: 'center' },
-  rejectionText: { color: '#dc3545', fontSize: 13, flex: 1 },
+  rejectionBox: { flexDirection: 'row', backgroundColor: COLORS.bgWhite, padding: 10, borderRadius: 8, marginTop: 10, borderWidth: 1, borderColor: COLORS.danger, alignItems: 'center' },
+  rejectionText: { color: COLORS.danger, fontSize: 13, flex: 1 },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { backgroundColor: '#fff', width: '85%', padding: 20, borderRadius: 16 },
-  modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10 },
-  modalInput: { backgroundColor: '#f4f6f8', borderRadius: 8, padding: 10, marginTop: 5, color: '#333' },
+  modalContent: { backgroundColor: COLORS.bgWhite, width: '85%', padding: 20, borderRadius: 16 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10, color: COLORS.textDark },
+  modalInput: { backgroundColor: COLORS.bgLight, borderRadius: 8, padding: 10, marginTop: 5, color: COLORS.textDark, borderWidth: 1, borderColor: COLORS.borderLight },
   modalActionRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 20, alignItems: 'center', gap: 10 },
   modalSubmitBtn: { padding: 10, borderRadius: 8, paddingHorizontal: 20 }
 });
