@@ -1,11 +1,13 @@
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next'; 
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Share, Modal, TextInput, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Share, Modal, TextInput, RefreshControl, Linking } from 'react-native'; // <-- ADDED LINKING
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import * as SecureStore from 'expo-secure-store';
 import api from '../services/api';
+import { COLORS } from '../constants/theme'; 
+import { PieChart } from 'react-native-gifted-charts'; 
 
 const CorpusDashboardCard = ({ groupId }) => {
   const { t } = useTranslation(); 
@@ -20,7 +22,6 @@ const CorpusDashboardCard = ({ groupId }) => {
       });
       setStats(response.data.data);
     } catch (error) {
-      // Silently fail here, because the main fetchGroupData will handle the access denied alert
       console.log("Corpus access blocked (Expected if pending approval)");
     } finally {
       setLoading(false);
@@ -29,33 +30,66 @@ const CorpusDashboardCard = ({ groupId }) => {
 
   useFocusEffect(useCallback(() => { fetchCorpusStats(); }, [groupId]));
 
-  if (loading) return <View style={styles.loaderBox}><ActivityIndicator size="small" color="#28a745" /></View>;
+  if (loading) return <View style={styles.loaderBox}><ActivityIndicator size="small" color={COLORS.primaryBlue} /></View>;
   if (!stats) return null;
 
+  const availableCash = Number(stats.live_corpus) || 0;
+  const activeLoans = Number(stats.outstanding_loans) || 0;
+  const totalNetWorth = Number(stats.total_group_value) || 0;
+
   return (
-    <View style={styles.corpusCardContainer}>
-      <View style={styles.corpusHeaderRow}>
-        <Ionicons name="wallet" size={24} color="#28a745" />
-        <Text style={styles.corpusTitle}>{t('groupDetails.liveCorpus', 'Live Group Corpus')}</Text>
+    <View style={styles.analyticsCard}>
+      <Text style={styles.analyticsTitle}>{t('groupDetails.fundDistribution', 'Fund Distribution')}</Text>
+      
+      <View style={styles.chartWrapper}>
+        <PieChart
+          donut
+          innerRadius={70}
+          radius={100}
+          data={[
+            { 
+              value: availableCash > 0 ? availableCash : 1, 
+              color: COLORS.success, 
+              focused: true 
+            },
+            { 
+              value: activeLoans > 0 ? activeLoans : 0, 
+              color: COLORS.warning 
+            }
+          ]}
+          centerLabelComponent={() => {
+            return (
+              <View style={{justifyContent: 'center', alignItems: 'center'}}>
+                <Text style={{fontSize: 12, color: COLORS.textMuted}}>{t('groupDetails.totalNetWorth', 'Total Net Worth')}</Text>
+                <Text style={{fontSize: 22, color: COLORS.primaryBlue, fontWeight: '900'}}>₹{totalNetWorth.toLocaleString()}</Text>
+              </View>
+            );
+          }}
+        />
       </View>
-      <View style={styles.mainBalance}>
-        <Text style={styles.balanceLabel}>{t('groupDetails.availableCash', 'Available Cash in Gat')}</Text>
-        <Text style={styles.balanceAmount}>₹{stats.live_corpus.toLocaleString()}</Text>
-      </View>
-      <View style={styles.statsGrid}>
-        <View style={styles.statBox}>
-          <Text style={styles.statLabel}>{t('groupDetails.totalNetWorth', 'Total Net Worth')}</Text>
-          <Text style={[styles.statValue, { color: '#2952a3' }]}>₹{stats.total_group_value.toLocaleString()}</Text>
+
+      <View style={styles.legendContainer}>
+        <View style={styles.legendItem}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={[styles.legendDot, { backgroundColor: COLORS.success }]} />
+            <Text style={styles.legendLabel}>{t('groupDetails.availableCash', 'Available Cash')}</Text>
+          </View>
+          <Text style={[styles.legendValue, { color: COLORS.success }]}>₹{availableCash.toLocaleString()}</Text>
         </View>
-        <View style={styles.statBox}>
-          <Text style={styles.statLabel}>{t('groupDetails.activeLoans', 'Active Loans')}</Text>
-          <Text style={[styles.statValue, { color: '#e67e22' }]}>₹{stats.outstanding_loans.toLocaleString()}</Text>
+
+        <View style={styles.legendItem}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={[styles.legendDot, { backgroundColor: COLORS.warning }]} />
+            <Text style={styles.legendLabel}>{t('groupDetails.activeLoans', 'Out on Loan')}</Text>
+          </View>
+          <Text style={[styles.legendValue, { color: COLORS.warning }]}>₹{activeLoans.toLocaleString()}</Text>
         </View>
       </View>
-      <View style={styles.footerDetails}>
-        <Text style={styles.footerText}>
-          {t('groupDetails.totalIn', 'Total In')}: <Text style={{ color: '#28a745', fontWeight: 'bold' }}>₹{stats.total_deposits.toLocaleString()}</Text>  |  
-          {t('groupDetails.totalOut', 'Total Out')}: <Text style={{ color: '#dc3545', fontWeight: 'bold' }}>₹{stats.total_withdrawals.toLocaleString()}</Text>
+
+      <View style={styles.flowFooter}>
+        <Text style={styles.flowText}>
+          In: <Text style={{ color: COLORS.success, fontWeight: 'bold' }}>₹{stats.total_deposits.toLocaleString()}</Text>  |  
+          Out: <Text style={{ color: COLORS.danger, fontWeight: 'bold' }}>₹{stats.total_withdrawals.toLocaleString()}</Text>
         </Text>
       </View>
     </View>
@@ -109,7 +143,6 @@ const GroupDetailsScreen = ({ route, navigation }) => {
       setActiveLoansCount(data.active_loans_count || 0);
       setPendingLoansCount(data.pending_loans_count || 0);
     } catch (error) {
-      // --- THE GHOST UI FIX: Kick them out immediately if blocked ---
       console.error("Failed to fetch group details:", error);
       Alert.alert(t('common.error', 'Access Denied'), "You are not an approved member of this group.");
       navigation.goBack(); 
@@ -147,6 +180,47 @@ const GroupDetailsScreen = ({ route, navigation }) => {
         formatted = formatted.replace('VOIDED:', `${t('dashboard.voidedTag', 'Cancelled')}:`);
     }
     return formatted;
+  };
+
+  // --- UPGRADED: WHATSAPP RECEIPT LOGIC ---
+  const sendWhatsAppReceipt = (tx) => {
+    const isDeposit = tx.type === 'deposit';
+    const actionText = isDeposit ? t('common.deposit', 'Deposit') : t('common.withdrawal', 'Withdrawal');
+    const symbol = isDeposit ? '🟢' : '🔴';
+    const memberName = tx.user?.name || t('groupDetails.roleMember', 'Member');
+    const dateFormatted = new Date(tx.transaction_date).toLocaleDateString('en-IN');
+    
+    // Pull the group name from the screen's state
+    const groupName = groupDetails?.name || 'Bachat Gat';
+    
+    // Generate a sleek Reference ID using the database ID
+    const txId = `TXN-${String(tx.id).padStart(5, '0')}`;
+
+    // Build a premium, enterprise-grade text receipt
+    const message = `*Bharat Bachat E-Receipt* 📄\n` +
+                    `------------------------\n` +
+                    `🏢 *Gat Name:* ${groupName}\n` +
+                    `👤 *Member:* ${memberName}\n\n` +
+                    `💰 *Amount:* ₹${tx.amount}\n` +
+                    `${symbol} *Type:* ${actionText}\n` +
+                    `📅 *Date:* ${dateFormatted}\n` +
+                    `🧾 *Ref ID:* ${txId}\n` +
+                    `📝 *Remarks:* ${tx.method || 'N/A'}\n` +
+                    `------------------------\n` +
+                    `_Generated securely via Bharat Bachat App_ ✅`;
+
+    // Encode for deep linking
+    const whatsappUrl = `whatsapp://send?text=${encodeURIComponent(message)}`;
+
+    Linking.canOpenURL(whatsappUrl)
+      .then((supported) => {
+        if (!supported) {
+          Alert.alert(t('common.error', 'Error'), "WhatsApp is not installed on your device.");
+        } else {
+          return Linking.openURL(whatsappUrl);
+        }
+      })
+      .catch((err) => console.error('An error occurred', err));
   };
 
   const handleApprove = async (userId) => {
@@ -278,16 +352,14 @@ const GroupDetailsScreen = ({ route, navigation }) => {
     }
   };
 
-  // Prevent UI rendering before data loads to avoid flickering
-  if (loading || !groupDetails) return <View style={styles.centered}><ActivityIndicator size="large" color="#2952a3" /></View>;
+  if (loading || !groupDetails) return <View style={styles.centered}><ActivityIndicator size="large" color={COLORS.primaryBlue} /></View>;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#333" />
+          <Ionicons name="arrow-back" size={24} color={COLORS.textDark} />
         </TouchableOpacity>
-        {/* TEXT WRAP FIX: numberOfLines={1} prevents long group names from breaking layout */}
         <Text style={styles.headerTitle} numberOfLines={1} ellipsizeMode="tail">
           {groupDetails?.name || 'Group Details'}
         </Text>
@@ -295,7 +367,7 @@ const GroupDetailsScreen = ({ route, navigation }) => {
 
       <ScrollView 
         style={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#2952a3']} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primaryBlue]} />}
       >
         <CorpusDashboardCard groupId={groupId} />
 
@@ -311,7 +383,7 @@ const GroupDetailsScreen = ({ route, navigation }) => {
                 <Text style={styles.inviteCode}>{groupDetails?.invite_code}</Text>
               </View>
               <TouchableOpacity style={styles.shareBtn} onPress={handleShareGroup}>
-                <Ionicons name="share-social" size={24} color="#2952a3" />
+                <Ionicons name="share-social" size={24} color={COLORS.primaryBlue} />
                 <Text style={styles.shareBtnText}>{t('groupDetails.shareBtn', 'SHARE')}</Text>
               </TouchableOpacity>
             </View>
@@ -319,48 +391,53 @@ const GroupDetailsScreen = ({ route, navigation }) => {
         </View>
 
         <View style={styles.loanBanner}>
-          <View style={styles.loanStat}>
+          <TouchableOpacity 
+            style={styles.loanStat} 
+            onPress={() => navigation.navigate('LoanHub', { groupId: groupId, role: role, groupDetails: groupDetails })}
+          >
             <Text style={styles.loanStatValue}>{activeLoansCount}</Text>
             <Text style={styles.loanStatLabel}>{t('groupDetails.activeLoans', 'Active Loans')}</Text>
-          </View>
+          </TouchableOpacity>
+          
           <View style={styles.loanDivider} />
-          <View style={styles.loanStat}>
-            <Text style={[styles.loanStatValue, { color: '#e67e22' }]}>{pendingLoansCount}</Text>
+          
+          <TouchableOpacity 
+            style={styles.loanStat} 
+            onPress={() => navigation.navigate('LoanHub', { groupId: groupId, role: role, groupDetails: groupDetails })}
+          >
+            <Text style={[styles.loanStatValue, { color: COLORS.warning }]}>{pendingLoansCount}</Text>
             <Text style={styles.loanStatLabel}>{t('groupDetails.pendingRequests', 'Pending Requests')}</Text>
-          </View>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.actionGrid}>
           <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Members', { groupId: groupId, role: role, groupDetails: groupDetails })}>
-            <View style={styles.iconCircle}><Ionicons name="people-outline" size={24} color="#2952a3" /></View>
+            <View style={styles.iconCircle}><Ionicons name="people-outline" size={24} color={COLORS.primaryBlue} /></View>
             <Text style={styles.actionText}>{t('groupDetails.btnMembers', 'Members')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Attendance', { groupId: groupId, role: role })}>
-            <View style={styles.iconCircle}><Ionicons name="clipboard-outline" size={24} color="#2952a3" /></View>
-            <Text style={styles.actionText}>{t('groupDetails.btnAttendance', 'Attendance')}</Text>
+          
+          <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('AddMeetingRecords', { groupId: groupId, role: role })}>
+            <View style={styles.iconCircle}><Ionicons name="calendar-outline" size={24} color={COLORS.primaryBlue} /></View>
+            <Text style={styles.actionText}>{t('groupDetails.btnMeeting', 'Record Meeting')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('MeetingMinutes', { groupId: groupId, role: role })}>
-            <View style={styles.iconCircle}><Ionicons name="document-text-outline" size={24} color="#2952a3" /></View>
-            <Text style={styles.actionText}>{t('groupDetails.btnRecords', 'Records')}</Text>
-          </TouchableOpacity>
+          
           <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Ledger', { groupId: groupId })}>
-            <View style={styles.iconCircle}><Ionicons name="book-outline" size={24} color="#2952a3" /></View>
+            <View style={styles.iconCircle}><Ionicons name="book-outline" size={24} color={COLORS.primaryBlue} /></View>
             <Text style={styles.actionText}>{t('groupDetails.btnPassbook', 'Passbook')}</Text>
           </TouchableOpacity>
         </View>
 
         <TouchableOpacity style={styles.historyBtn} onPress={() => navigation.navigate('MeetingHistory', { groupId: groupId, members: members })}>
-          <Ionicons name="time" size={20} color="#2952a3" style={{ marginRight: 8 }} />
-          <Text style={{ color: '#2952a3', fontWeight: 'bold', fontSize: 15 }}>{t('groupDetails.viewHistory', 'View Past Records & Attendance')}</Text>
+          <Ionicons name="time" size={20} color={COLORS.primaryBlue} style={{ marginRight: 8 }} />
+          <Text style={{ color: COLORS.primaryBlue, fontWeight: 'bold', fontSize: 15 }}>{t('groupDetails.viewHistory', 'View Past Records & Attendance')}</Text>
         </TouchableOpacity>
 
         {isAdmin && pendingMembers.length > 0 && (
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: '#e67e22' }]}>{t('groupDetails.pendingApprovals', 'Pending Approvals')} ({pendingMembers.length})</Text>
+            <Text style={[styles.sectionTitle, { color: COLORS.warning }]}>{t('groupDetails.pendingApprovals', 'Pending Approvals')} ({pendingMembers.length})</Text>
             {pendingMembers.map((user) => (
               <View key={user.id} style={styles.memberCard}>
                 <View style={{ flex: 1 }}>
-                  {/* TEXT WRAP FIX for long member names */}
                   <Text style={styles.memberName} numberOfLines={1} ellipsizeMode="tail">{user.name}</Text>
                   <Text style={styles.memberEmail}>{user.email}</Text>
                 </View>
@@ -388,7 +465,6 @@ const GroupDetailsScreen = ({ route, navigation }) => {
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <View style={styles.avatarCircle}><Text style={styles.avatarText}>{user.name.charAt(0).toUpperCase()}</Text></View>
                   <View style={{ flex: 1, marginLeft: 15 }}>
-                    {/* TEXT WRAP FIX for long member names */}
                     <Text style={styles.memberName} numberOfLines={1} ellipsizeMode="tail">{user.name} {isCreator && '👑'}</Text>
                     <Text style={styles.memberRole}>{isUserAdmin ? `⭐ ${t('groupDetails.roleAdmin', 'Admin')}` : t('groupDetails.roleMember', 'Member')}</Text>
                   </View>
@@ -416,49 +492,60 @@ const GroupDetailsScreen = ({ route, navigation }) => {
                 
                 return (
                   <View key={index} style={[styles.transactionItem, isVoided && { backgroundColor: '#fff5f5' }]}>
-                    
-                    {/* TEXT WRAP FIX IMPLEMENTED HERE */}
-                    <View style={[styles.txLeft, { flex: 1, marginRight: 10, overflow: 'hidden' }]}>
-                      <Text 
-                        style={[styles.txName, isVoided && { textDecorationLine: 'line-through', color: '#999' }]}
-                        numberOfLines={1}
-                        ellipsizeMode="tail"
-                      >
-                        {tx.user?.name || t('groupDetails.roleMember', 'Member')}
-                      </Text>
-                      
-                      <Text 
-                        style={[styles.txDate, isVoided && {color: '#dc3545', fontWeight: 'bold'}, isEdited && {color: '#e67e22', fontStyle: 'italic'}]}
-                        numberOfLines={2}
-                      >
-                        {formatTransactionMethod(tx.method)}
-                      </Text>
-                    </View>
-                    
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={[styles.txAmount, { color: isVoided ? '#999' : (tx.type === 'deposit' ? '#28a745' : '#dc3545') }, isVoided && { textDecorationLine: 'line-through' }]}>
-                        {tx.type === 'deposit' ? '+' : '-'}₹{isVoided ? '0' : tx.amount}
-                      </Text>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
+                      <View style={[styles.txLeft, { flex: 1, marginRight: 10, overflow: 'hidden' }]}>
+                        <Text 
+                          style={[styles.txName, isVoided && { textDecorationLine: 'line-through', color: '#999' }]}
+                          numberOfLines={1}
+                          ellipsizeMode="tail"
+                        >
+                          {tx.user?.name || t('groupDetails.roleMember', 'Member')}
+                        </Text>
+                        
+                        <Text 
+                          style={[styles.txDate, isVoided && {color: COLORS.danger, fontWeight: 'bold'}, isEdited && {color: COLORS.warning, fontStyle: 'italic'}]}
+                          numberOfLines={2}
+                        >
+                          {formatTransactionMethod(tx.method)}
+                        </Text>
 
-                      {tx.category === 'penalty' && <Text style={{fontSize: 10, color: '#e67e22', fontWeight: 'bold', marginTop: 2}}>{t('groupDetails.fineTag', 'FINE')}</Text>}
-                      {isVoided && <Text style={{fontSize: 10, color: '#dc3545', fontWeight: 'bold', marginTop: 2}}>{t('dashboard.voidedTag', 'CANCELLED').toUpperCase()}</Text>}
+                        {/* --- NEW: WHATSAPP BUTTON UI --- */}
+                        {!isVoided && (
+                          <TouchableOpacity 
+                            style={styles.whatsappBtn}
+                            onPress={() => sendWhatsAppReceipt(tx)}
+                          >
+                            <Ionicons name="logo-whatsapp" size={14} color="#25D366" />
+                            <Text style={styles.whatsappBtnText}>Send Receipt</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
                       
-                      {isAdmin && !isVoided && (
-                        <View style={{ flexDirection: 'row', marginTop: 5 }}>
-                          <TouchableOpacity onPress={() => navigation.navigate('EditTransaction', { transactionData: tx })} style={styles.iconBtn}>
-                            <Ionicons name="pencil" size={16} color="#007bff" />
-                          </TouchableOpacity>
-                          <TouchableOpacity onPress={() => triggerDeleteModal(tx.id)} style={[styles.iconBtn, { marginLeft: 8 }]}>
-                            <Ionicons name="trash" size={16} color="#dc3545" />
-                          </TouchableOpacity>
-                        </View>
-                      )}
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={[styles.txAmount, { color: isVoided ? '#999' : (tx.type === 'deposit' ? COLORS.success : COLORS.danger) }, isVoided && { textDecorationLine: 'line-through' }]}>
+                          {tx.type === 'deposit' ? '+' : '-'}₹{isVoided ? '0' : tx.amount}
+                        </Text>
+
+                        {tx.category === 'penalty' && <Text style={{fontSize: 10, color: COLORS.warning, fontWeight: 'bold', marginTop: 2}}>{t('groupDetails.fineTag', 'FINE')}</Text>}
+                        {isVoided && <Text style={{fontSize: 10, color: COLORS.danger, fontWeight: 'bold', marginTop: 2}}>{t('dashboard.voidedTag', 'CANCELLED').toUpperCase()}</Text>}
+                        
+                        {isAdmin && !isVoided && (
+                          <View style={{ flexDirection: 'row', marginTop: 10 }}>
+                            <TouchableOpacity onPress={() => navigation.navigate('EditTransaction', { transactionData: tx })} style={styles.iconBtn}>
+                              <Ionicons name="pencil" size={16} color="#007bff" />
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => triggerDeleteModal(tx.id)} style={[styles.iconBtn, { marginLeft: 8 }]}>
+                              <Ionicons name="trash" size={16} color={COLORS.danger} />
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </View>
                     </View>
                   </View>
                 )
               })
             ) : (
-              <Text style={{ textAlign: 'center', color: '#888', padding: 15 }}>{t('dashboard.noTransactions', 'No transactions recorded yet.')}</Text>
+              <Text style={{ textAlign: 'center', color: COLORS.textMuted, padding: 15 }}>{t('dashboard.noTransactions', 'No transactions recorded yet.')}</Text>
             )}
           </View>
         </View>
@@ -466,28 +553,26 @@ const GroupDetailsScreen = ({ route, navigation }) => {
         <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* UNIVERSAL ACTION BAR */}
-      <View style={{ padding: 15, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#eee', flexDirection: 'row', gap: 10 }}>
+      <View style={{ padding: 15, backgroundColor: COLORS.bgWhite, borderTopWidth: 1, borderTopColor: COLORS.borderLight, flexDirection: 'row', gap: 10 }}>
         <TouchableOpacity 
-          style={{ flex: 1, backgroundColor: '#e67e22', flexDirection: 'row', padding: 15, borderRadius: 12, justifyContent: 'center', alignItems: 'center', elevation: 2 }}
+          style={{ flex: 1, backgroundColor: COLORS.warning, flexDirection: 'row', padding: 15, borderRadius: 12, justifyContent: 'center', alignItems: 'center', elevation: 2 }}
           onPress={() => navigation.navigate('LoanHub', { groupId: groupId, role: role, groupDetails: groupDetails })}
         >
-          <Ionicons name="cash-outline" size={20} color="#fff" style={{ marginRight: 6 }}/>
-          <Text style={{ color: '#fff', fontSize: 14, fontWeight: 'bold' }}>{t('groupDetails.manageLoansBtn', 'Manage Loans')}</Text>
+          <Ionicons name="cash-outline" size={20} color={COLORS.bgWhite} style={{ marginRight: 6 }}/>
+          <Text style={{ color: COLORS.bgWhite, fontSize: 14, fontWeight: 'bold' }}>{t('groupDetails.manageLoansBtn', 'Manage Loans')}</Text>
         </TouchableOpacity>
 
         {isAdmin && (
           <TouchableOpacity 
-            style={{ flex: 1, backgroundColor: '#2952a3', flexDirection: 'row', padding: 15, borderRadius: 12, justifyContent: 'center', alignItems: 'center', elevation: 2 }}
+            style={{ flex: 1, backgroundColor: COLORS.primaryBlue, flexDirection: 'row', padding: 15, borderRadius: 12, justifyContent: 'center', alignItems: 'center', elevation: 2 }}
             onPress={() => navigation.navigate('AddSavings', { groupId: groupId, members: members })}
           >
-            <Ionicons name="add-circle" size={20} color="#fff" style={{ marginRight: 6 }}/>
-            <Text style={{ color: '#fff', fontSize: 14, fontWeight: 'bold' }}>{t('groupDetails.addSavingsBtn', 'Collect Savings')}</Text>
+            <Ionicons name="add-circle" size={20} color={COLORS.bgWhite} style={{ marginRight: 6 }}/>
+            <Text style={{ color: COLORS.bgWhite, fontSize: 14, fontWeight: 'bold' }}>{t('groupDetails.addSavingsBtn', 'Collect Savings')}</Text>
           </TouchableOpacity>
         )}
       </View>
 
-      {/* THE SLIDING ACTION SHEET */}
       <Modal visible={actionSheetVisible} transparent={true} animationType="slide">
         <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={() => setActionSheetVisible(false)}>
           <View style={styles.actionSheet}>
@@ -496,35 +581,34 @@ const GroupDetailsScreen = ({ route, navigation }) => {
             
             {selectedMember?.pivot?.role === 'member' ? (
               <TouchableOpacity style={styles.sheetAction} onPress={() => executeAction(handlePromote, selectedMember.id, selectedMember.name)}>
-                <View style={[styles.sheetIconCircle, {backgroundColor: '#eef2ff'}]}><Ionicons name="star" size={20} color="#2952a3" /></View>
+                <View style={[styles.sheetIconCircle, {backgroundColor: COLORS.primaryBlueLight}]}><Ionicons name="star" size={20} color={COLORS.primaryBlue} /></View>
                 <Text style={styles.sheetActionText}>{t('groupDetails.promoteBtn', 'Promote to Admin')}</Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity style={styles.sheetAction} onPress={() => executeAction(handleDemote, selectedMember.id, selectedMember.name)}>
-                <View style={[styles.sheetIconCircle, {backgroundColor: '#fff4e5'}]}><Ionicons name="arrow-down" size={20} color="#e67e22" /></View>
+                <View style={[styles.sheetIconCircle, {backgroundColor: '#fff4e5'}]}><Ionicons name="arrow-down" size={20} color={COLORS.warning} /></View>
                 <Text style={styles.sheetActionText}>{t('groupDetails.demoteBtn', 'Demote to Member')}</Text>
               </TouchableOpacity>
             )}
 
             <TouchableOpacity style={styles.sheetAction} onPress={() => executeAction(triggerPenaltyModal)}>
-              <View style={[styles.sheetIconCircle, {backgroundColor: '#fff4e5'}]}><Ionicons name="warning" size={20} color="#e67e22" /></View>
+              <View style={[styles.sheetIconCircle, {backgroundColor: '#fff4e5'}]}><Ionicons name="warning" size={20} color={COLORS.warning} /></View>
               <Text style={styles.sheetActionText}>{t('groupDetails.fineBtn', 'Charge Fine / Penalty')}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={[styles.sheetAction, {borderBottomWidth: 0}]} onPress={() => executeAction(handleRemove, selectedMember.id, selectedMember.name)}>
-              <View style={[styles.sheetIconCircle, {backgroundColor: '#ffebee'}]}><Ionicons name="trash" size={20} color="#dc3545" /></View>
-              <Text style={[styles.sheetActionText, {color: '#dc3545'}]}>{t('groupDetails.removeBtn', 'Remove Member')}</Text>
+              <View style={[styles.sheetIconCircle, {backgroundColor: '#ffebee'}]}><Ionicons name="trash" size={20} color={COLORS.danger} /></View>
+              <Text style={[styles.sheetActionText, {color: COLORS.danger}]}>{t('groupDetails.removeBtn', 'Remove Member')}</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
       </Modal>
 
-      {/* PENALTY MODAL */}
       <Modal visible={penaltyModalVisible} transparent={true} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t('groupDetails.chargeFineTitle', 'Add Fine / Penalty')}</Text>
-            <Text style={{color: '#666', marginBottom: 15}}>Charging <Text style={{fontWeight: 'bold', color: '#333'}}>{penaltyUser?.name}</Text></Text>
+            <Text style={{color: COLORS.textGray, marginBottom: 15}}>Charging <Text style={{fontWeight: 'bold', color: COLORS.textDark}}>{penaltyUser?.name}</Text></Text>
             
             <TextInput 
               style={[styles.modalInput, { height: 50, fontSize: 18, fontWeight: 'bold' }]} 
@@ -542,24 +626,23 @@ const GroupDetailsScreen = ({ route, navigation }) => {
             />
 
             <View style={styles.modalActionRow}>
-              <TouchableOpacity onPress={() => setPenaltyModalVisible(false)} style={{padding: 10}}><Text>{t('common.cancel', 'Cancel')}</Text></TouchableOpacity>
-              <TouchableOpacity onPress={handleChargePenalty} disabled={submittingPenalty} style={[styles.modalSubmitBtn, {backgroundColor: '#e67e22'}]}>
-                {submittingPenalty ? <ActivityIndicator color="#fff" /> : <Text style={{color: '#fff', fontWeight: 'bold'}}>{t('common.submit', 'Charge Fine')}</Text>}
+              <TouchableOpacity onPress={() => setPenaltyModalVisible(false)} style={{padding: 10}}><Text style={{color: COLORS.textDark}}>{t('common.cancel', 'Cancel')}</Text></TouchableOpacity>
+              <TouchableOpacity onPress={handleChargePenalty} disabled={submittingPenalty} style={[styles.modalSubmitBtn, {backgroundColor: COLORS.warning}]}>
+                {submittingPenalty ? <ActivityIndicator color={COLORS.bgWhite} /> : <Text style={{color: COLORS.bgWhite, fontWeight: 'bold'}}>{t('common.submit', 'Charge Fine')}</Text>}
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
 
-      {/* NEW: VOID/DELETE TRANSACTION MODAL */}
       <Modal visible={deleteModalVisible} transparent={true} animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={[styles.modalTitle, {color: '#dc3545'}]}>{t('alerts.voidPrompt', 'Void Transaction')}</Text>
-            <Text style={{color: '#666', marginBottom: 15}}>You are about to cancel this transaction. It will remain in the logs as 'Voided' for audit purposes.</Text>
+            <Text style={[styles.modalTitle, {color: COLORS.danger}]}>{t('alerts.voidPrompt', 'Void Transaction')}</Text>
+            <Text style={{color: COLORS.textGray, marginBottom: 15}}>You are about to cancel this transaction. It will remain in the logs as 'Voided' for audit purposes.</Text>
             
             <TextInput 
-              style={[styles.modalInput, { height: 80, borderColor: '#dc3545', borderWidth: 1 }]} 
+              style={[styles.modalInput, { height: 80, borderColor: COLORS.danger, borderWidth: 1 }]} 
               value={deleteReason}
               onChangeText={setDeleteReason} 
               placeholder="Enter reason for voiding (Required)"
@@ -567,9 +650,9 @@ const GroupDetailsScreen = ({ route, navigation }) => {
             />
 
             <View style={styles.modalActionRow}>
-              <TouchableOpacity onPress={() => setDeleteModalVisible(false)} style={{padding: 10}}><Text>{t('common.cancel', 'Cancel')}</Text></TouchableOpacity>
-              <TouchableOpacity onPress={confirmDeleteTransaction} disabled={submittingDelete} style={[styles.modalSubmitBtn, {backgroundColor: '#dc3545'}]}>
-                {submittingDelete ? <ActivityIndicator color="#fff" /> : <Text style={{color: '#fff', fontWeight: 'bold'}}>{t('common.submit', 'Void Record')}</Text>}
+              <TouchableOpacity onPress={() => setDeleteModalVisible(false)} style={{padding: 10}}><Text style={{color: COLORS.textDark}}>{t('common.cancel', 'Cancel')}</Text></TouchableOpacity>
+              <TouchableOpacity onPress={confirmDeleteTransaction} disabled={submittingDelete} style={[styles.modalSubmitBtn, {backgroundColor: COLORS.danger}]}>
+                {submittingDelete ? <ActivityIndicator color={COLORS.bgWhite} /> : <Text style={{color: COLORS.bgWhite, fontWeight: 'bold'}}>{t('common.submit', 'Void Record')}</Text>}
               </TouchableOpacity>
             </View>
           </View>
@@ -581,62 +664,57 @@ const GroupDetailsScreen = ({ route, navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f6f8' },
+  container: { flex: 1, backgroundColor: COLORS.bgLight },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { flexDirection: 'row', alignItems: 'center', padding: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
+  header: { flexDirection: 'row', alignItems: 'center', padding: 20, backgroundColor: COLORS.bgWhite, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
   backButton: { marginRight: 15 },
-  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#333', flex: 1 }, // Added flex: 1 to ensure truncation works
+  headerTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.textDark, flex: 1 }, 
   content: { padding: 20 },
   
-  // Corpus Dashboard Styles
   loaderBox: { padding: 20, alignItems: 'center', justifyContent: 'center' },
-  corpusCardContainer: { backgroundColor: '#fff', borderRadius: 16, padding: 20, marginBottom: 15, elevation: 3, borderWidth: 1, borderColor: '#eef2f9' },
-  corpusHeaderRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
-  corpusTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', marginLeft: 8 },
-  mainBalance: { backgroundColor: '#f0fdf4', padding: 15, borderRadius: 12, alignItems: 'center', marginBottom: 15, borderWidth: 1, borderColor: '#dcfce7' },
-  balanceLabel: { fontSize: 14, color: '#166534', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 1 },
-  balanceAmount: { fontSize: 36, fontWeight: 'bold', color: '#15803d', marginTop: 5 },
-  statsGrid: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
-  statBox: { flex: 1, backgroundColor: '#f8f9fa', padding: 15, borderRadius: 10, marginHorizontal: 5, alignItems: 'center', borderWidth: 1, borderColor: '#e9ecef' },
-  statLabel: { fontSize: 12, color: '#6c757d', fontWeight: '600', marginBottom: 5 },
-  statValue: { fontSize: 18, fontWeight: 'bold' },
-  footerDetails: { borderTopWidth: 1, borderTopColor: '#f1f3f5', paddingTop: 12, alignItems: 'center' },
-  footerText: { fontSize: 12, color: '#495057' },
+  
+  analyticsCard: { backgroundColor: COLORS.bgWhite, borderRadius: 16, padding: 20, marginBottom: 15, elevation: 4, borderWidth: 1, borderColor: COLORS.borderLight, alignItems: 'center' },
+  analyticsTitle: { fontSize: 16, fontWeight: 'bold', color: COLORS.textDark, alignSelf: 'flex-start', marginBottom: 20, textTransform: 'uppercase', letterSpacing: 1 },
+  chartWrapper: { alignItems: 'center', justifyContent: 'center', height: 200, width: '100%', marginBottom: 10 },
+  legendContainer: { flexDirection: 'row', justifyContent: 'space-around', width: '100%', marginTop: 15, paddingHorizontal: 10 },
+  legendItem: { alignItems: 'center' },
+  legendDot: { height: 10, width: 10, borderRadius: 5, marginRight: 6 },
+  legendLabel: { fontSize: 12, color: COLORS.textGray, fontWeight: '500' },
+  legendValue: { fontSize: 18, fontWeight: 'bold', marginTop: 4 },
+  flowFooter: { width: '100%', borderTopWidth: 1, borderTopColor: COLORS.borderLight, marginTop: 20, paddingTop: 15, alignItems: 'center' },
+  flowText: { fontSize: 13, color: COLORS.textGray },
 
-  // Group Info Styles
-  overviewCard: { backgroundColor: '#2952a3', padding: 20, borderRadius: 16, marginBottom: 15, elevation: 4 },
+  overviewCard: { backgroundColor: COLORS.primaryBlue, padding: 20, borderRadius: 16, marginBottom: 15, elevation: 4 },
   overviewLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 12, letterSpacing: 0.5 },
-  overviewValue: { color: '#fff', fontSize: 28, fontWeight: 'bold' },
+  overviewValue: { color: COLORS.bgWhite, fontSize: 28, fontWeight: 'bold' },
   inviteBox: { backgroundColor: 'rgba(255,255,255,0.15)', padding: 10, borderRadius: 8, alignItems: 'center' },
   inviteLabel: { color: 'rgba(255,255,255,0.9)', fontSize: 13 },
-  inviteCode: { fontWeight: 'bold', color: '#fff', letterSpacing: 2, fontSize: 18 },
-  shareBtn: { backgroundColor: '#fff', borderRadius: 8, padding: 10, justifyContent: 'center', alignItems: 'center', flex: 0.3 },
-  shareBtnText: { color: '#2952a3', fontSize: 10, fontWeight: 'bold', marginTop: 2 },
+  inviteCode: { fontWeight: 'bold', color: COLORS.bgWhite, letterSpacing: 2, fontSize: 18 },
+  shareBtn: { backgroundColor: COLORS.bgWhite, borderRadius: 8, padding: 10, justifyContent: 'center', alignItems: 'center', flex: 0.3 },
+  shareBtnText: { color: COLORS.primaryBlue, fontSize: 10, fontWeight: 'bold', marginTop: 2 },
 
-  // Loan Banner
-  loanBanner: { flexDirection: 'row', backgroundColor: '#fff', borderRadius: 12, padding: 15, marginBottom: 20, elevation: 1, alignItems: 'center' },
+  loanBanner: { flexDirection: 'row', backgroundColor: COLORS.bgWhite, borderRadius: 12, padding: 15, marginBottom: 20, elevation: 1, alignItems: 'center' },
   loanStat: { flex: 1, alignItems: 'center' },
-  loanStatValue: { fontSize: 22, fontWeight: 'bold', color: '#2952a3' },
-  loanStatLabel: { fontSize: 12, color: '#666', marginTop: 4, fontWeight: '600' },
-  loanDivider: { width: 1, height: 30, backgroundColor: '#eee' },
+  loanStatValue: { fontSize: 22, fontWeight: 'bold', color: COLORS.primaryBlue },
+  loanStatLabel: { fontSize: 12, color: COLORS.textMuted, marginTop: 4, fontWeight: '600' },
+  loanDivider: { width: 1, height: 30, backgroundColor: COLORS.borderLight },
 
-  // Action Grid
-  actionGrid: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#fff', padding: 15, borderRadius: 16, marginBottom: 15, elevation: 1 },
-  actionButton: { alignItems: 'center', width: '23%' },
-  iconCircle: { backgroundColor: '#eef2f9', width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginBottom: 6 },
-  actionText: { fontSize: 11, color: '#555', fontWeight: 'bold', textAlign: 'center' },
+  actionGrid: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: COLORS.bgWhite, padding: 15, borderRadius: 16, marginBottom: 15, elevation: 1 },
+  actionButton: { alignItems: 'center', width: '30%' },
+  iconCircle: { backgroundColor: COLORS.primaryBlueLight, width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginBottom: 6 },
+  actionText: { fontSize: 11, color: COLORS.textGray, fontWeight: 'bold', textAlign: 'center' },
 
-  historyBtn: { backgroundColor: '#e6eeff', padding: 15, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 25, elevation: 1 },
+  historyBtn: { backgroundColor: COLORS.primaryBlueLight, padding: 15, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 25, elevation: 1 },
 
   section: { marginBottom: 25 },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 15 },
+  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.textDark, marginBottom: 15 },
   
-  memberCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 15, borderRadius: 12, marginBottom: 10, elevation: 1 },
-  avatarCircle: { width: 45, height: 45, borderRadius: 22.5, backgroundColor: '#eef2ff', justifyContent: 'center', alignItems: 'center' },
-  avatarText: { fontSize: 20, fontWeight: 'bold', color: '#2952a3' },
-  memberName: { fontSize: 16, fontWeight: 'bold', color: '#333' },
-  memberEmail: { fontSize: 13, color: '#888', marginTop: 2 },
-  memberRole: { fontSize: 13, color: '#2952a3', fontWeight: 'bold', marginTop: 4 },
+  memberCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bgWhite, padding: 15, borderRadius: 12, marginBottom: 10, elevation: 1 },
+  avatarCircle: { width: 45, height: 45, borderRadius: 22.5, backgroundColor: COLORS.primaryBlueLight, justifyContent: 'center', alignItems: 'center' },
+  avatarText: { fontSize: 20, fontWeight: 'bold', color: COLORS.primaryBlue },
+  memberName: { fontSize: 16, fontWeight: 'bold', color: COLORS.textDark },
+  memberEmail: { fontSize: 13, color: COLORS.textMuted, marginTop: 2 },
+  memberRole: { fontSize: 13, color: COLORS.primaryBlue, fontWeight: 'bold', marginTop: 4 },
   
   statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, marginBottom: 4, alignSelf: 'flex-end' },
   badgePaid: { backgroundColor: '#e6f4ea' },
@@ -644,34 +722,37 @@ const styles = StyleSheet.create({
   statusBadgeText: { fontSize: 11, fontWeight: 'bold', letterSpacing: 0.5 },
   textPaid: { color: '#137333' },
   textPending: { color: '#c5221f' },
-  paidAmountText: { fontSize: 12, color: '#666', fontWeight: '500' },
+  paidAmountText: { fontSize: 12, color: COLORS.textMuted, fontWeight: '500' },
 
-  approveButton: { backgroundColor: '#28a745', paddingVertical: 8, paddingHorizontal: 15, borderRadius: 8 },
-  approveButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 14 },
+  approveButton: { backgroundColor: COLORS.success, paddingVertical: 8, paddingHorizontal: 15, borderRadius: 8 },
+  approveButtonText: { color: COLORS.bgWhite, fontWeight: 'bold', fontSize: 14 },
 
-  transactionsContainer: { backgroundColor: '#fff', borderRadius: 12, padding: 10, elevation: 1 },
-  transactionItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  txLeft: { flex: 1, marginRight: 10, overflow: 'hidden' }, // Ensure text stays within bounds
-  txName: { fontSize: 15, fontWeight: 'bold', color: '#333' },
-  txDate: { fontSize: 12, color: '#888', marginTop: 2 },
+  transactionsContainer: { backgroundColor: COLORS.bgWhite, borderRadius: 12, padding: 10, elevation: 1 },
+  transactionItem: { paddingVertical: 12, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
+  txLeft: { flex: 1, marginRight: 10, overflow: 'hidden' }, 
+  txName: { fontSize: 15, fontWeight: 'bold', color: COLORS.textDark },
+  txDate: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
   txAmount: { fontSize: 16, fontWeight: 'bold' },
-  iconBtn: { padding: 6, backgroundColor: '#eef2f9', borderRadius: 6 },
+  iconBtn: { padding: 6, backgroundColor: COLORS.primaryBlueLight, borderRadius: 6 },
+  
+  // --- NEW WHATSAPP BUTTON STYLE ---
+  whatsappBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F5E9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginTop: 8, alignSelf: 'flex-start', borderWidth: 1, borderColor: '#C8E6C9' },
+  whatsappBtnText: { marginLeft: 4, fontSize: 11, fontWeight: 'bold', color: '#128C7E' },
 
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { backgroundColor: '#fff', width: '85%', padding: 20, borderRadius: 16 },
+  modalContent: { backgroundColor: COLORS.bgWhite, width: '85%', padding: 20, borderRadius: 16 },
   modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10 },
-  modalInput: { backgroundColor: '#f4f6f8', borderRadius: 8, padding: 10, marginTop: 10, color: '#333' },
+  modalInput: { backgroundColor: COLORS.bgLight, borderRadius: 8, padding: 10, marginTop: 10, color: COLORS.textDark },
   modalActionRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 20, alignItems: 'center', gap: 10 },
   modalSubmitBtn: { padding: 10, borderRadius: 8, paddingHorizontal: 20 },
 
-  // --- SLIDING ACTION SHEET STYLES ---
   sheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  actionSheet: { backgroundColor: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40 },
-  sheetHandle: { width: 40, height: 5, backgroundColor: '#ccc', borderRadius: 3, alignSelf: 'center', marginBottom: 15 },
-  sheetHeader: { fontSize: 18, fontWeight: 'bold', color: '#333', textAlign: 'center', marginBottom: 20 },
-  sheetAction: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  actionSheet: { backgroundColor: COLORS.bgWhite, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 40 },
+  sheetHandle: { width: 40, height: 5, backgroundColor: COLORS.borderLight, borderRadius: 3, alignSelf: 'center', marginBottom: 15 },
+  sheetHeader: { fontSize: 18, fontWeight: 'bold', color: COLORS.textDark, textAlign: 'center', marginBottom: 20 },
+  sheetAction: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
   sheetIconCircle: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
-  sheetActionText: { fontSize: 16, fontWeight: '600', color: '#333' }
+  sheetActionText: { fontSize: 16, fontWeight: '600', color: COLORS.textDark }
 });
 
 export default GroupDetailsScreen;

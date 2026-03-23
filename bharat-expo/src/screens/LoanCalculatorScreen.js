@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { COLORS } from '../constants/theme'; // <-- BRAND THEME IMPORTED
 
 const LoanCalculatorScreen = ({ navigation }) => {
   const [amount, setAmount] = useState('');
@@ -32,7 +33,7 @@ const LoanCalculatorScreen = ({ navigation }) => {
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={28} color="#333" />
+            <Ionicons name="arrow-back" size={28} color={COLORS.textDark} />
           </TouchableOpacity>
           <Text style={styles.title}>Loan Calculator</Text>
         </View>
@@ -42,6 +43,7 @@ const LoanCalculatorScreen = ({ navigation }) => {
           <TextInput 
             style={styles.input} 
             placeholder="e.g. 5000" 
+            placeholderTextColor={COLORS.textMuted}
             keyboardType="numeric"
             value={amount}
             onChangeText={setAmount}
@@ -51,6 +53,7 @@ const LoanCalculatorScreen = ({ navigation }) => {
           <TextInput 
             style={styles.input} 
             placeholder="e.g. 12" 
+            placeholderTextColor={COLORS.textMuted}
             keyboardType="numeric"
             value={tenure}
             onChangeText={setTenure}
@@ -60,6 +63,7 @@ const LoanCalculatorScreen = ({ navigation }) => {
           <TextInput 
             style={styles.input} 
             placeholder="e.g. 2" 
+            placeholderTextColor={COLORS.textMuted}
             keyboardType="numeric"
             value={interestRate}
             onChangeText={setInterestRate}
@@ -74,11 +78,11 @@ const LoanCalculatorScreen = ({ navigation }) => {
           <View style={styles.resultCard}>
             <Text style={styles.resultTitle}>Repayment Summary</Text>
             <View style={styles.resultRow}>
-              <Text>Monthly EMI:</Text>
+              <Text style={{color: COLORS.textGray}}>Monthly EMI:</Text>
               <Text style={styles.resultValue}>₹{result.monthly}</Text>
             </View>
             <View style={styles.resultRow}>
-              <Text>Total Interest:</Text>
+              <Text style={{color: COLORS.textGray}}>Total Interest:</Text>
               <Text style={styles.resultValue}>₹{result.interest}</Text>
             </View>
             <View style={styles.resultRow}>
@@ -93,21 +97,21 @@ const LoanCalculatorScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f6f8' },
+  container: { flex: 1, backgroundColor: COLORS.bgLight },
   scrollContent: { padding: 20 },
   header: { flexDirection: 'row', alignItems: 'center', marginBottom: 30 },
-  title: { fontSize: 22, fontWeight: 'bold', marginLeft: 15, color: '#333' },
-  inputGroup: { backgroundColor: '#fff', padding: 20, borderRadius: 16, elevation: 2 },
-  label: { fontSize: 14, color: '#666', marginBottom: 8, marginTop: 10 },
-  input: { borderBottomWidth: 1, borderColor: '#ddd', fontSize: 18, paddingVertical: 8, color: '#333' },
-  calcButton: { backgroundColor: '#2952a3', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 30 },
-  calcButtonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  resultCard: { backgroundColor: '#eef2ff', padding: 20, borderRadius: 16, marginTop: 30, borderWidth: 1, borderColor: '#2952a3' },
-  resultTitle: { fontSize: 18, fontWeight: 'bold', color: '#2952a3', marginBottom: 15 },
+  title: { fontSize: 22, fontWeight: 'bold', marginLeft: 15, color: COLORS.textDark },
+  inputGroup: { backgroundColor: COLORS.bgWhite, padding: 20, borderRadius: 16, elevation: 2 },
+  label: { fontSize: 14, color: COLORS.textGray, marginBottom: 8, marginTop: 10 },
+  input: { borderBottomWidth: 1, borderColor: COLORS.borderLight, fontSize: 18, paddingVertical: 8, color: COLORS.textDark },
+  calcButton: { backgroundColor: COLORS.primaryBlue, padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 30 },
+  calcButtonText: { color: COLORS.bgWhite, fontSize: 16, fontWeight: 'bold' },
+  resultCard: { backgroundColor: COLORS.primaryBlueLight, padding: 20, borderRadius: 16, marginTop: 30, borderWidth: 1, borderColor: COLORS.primaryBlue },
+  resultTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.primaryBlue, marginBottom: 15 },
   resultRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
-  resultValue: { fontWeight: '600', color: '#333' },
-  bold: { fontWeight: 'bold' },
-  totalValue: { fontSize: 20, fontWeight: 'bold', color: '#2952a3' }
+  resultValue: { fontWeight: '600', color: COLORS.textDark },
+  bold: { fontWeight: 'bold', color: COLORS.textDark },
+  totalValue: { fontSize: 20, fontWeight: 'bold', color: COLORS.primaryBlue }
 });
 
 export default LoanCalculatorScreen;

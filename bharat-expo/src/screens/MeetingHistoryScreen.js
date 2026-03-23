@@ -4,14 +4,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import api from '../services/api';
 import * as SecureStore from 'expo-secure-store';
+import { COLORS } from '../constants/theme'; // <-- BRAND THEME IMPORTED
 
 const MeetingHistoryScreen = ({ route, navigation }) => {
   const { groupId, members = [] } = route.params; 
   
   const [loading, setLoading] = useState(true);
-  const [historyData, setHistoryData] = useState([]); // Array of dates with attached records
+  const [historyData, setHistoryData] = useState([]); 
   
-  // Detail Modal States
   const [detailModalVisible, setDetailModalVisible] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState(null);
 
@@ -27,7 +27,7 @@ const MeetingHistoryScreen = ({ route, navigation }) => {
       });
 
       if (response.data.status === 'success') {
-        setHistoryData(response.data.data); // The backend now sends a beautifully merged array!
+        setHistoryData(response.data.data); 
       }
     } catch (error) {
       console.error("Failed to fetch history:", error);
@@ -47,23 +47,21 @@ const MeetingHistoryScreen = ({ route, navigation }) => {
     setDetailModalVisible(true);
   };
 
-  // UI: The main list of clickable dates
   const renderDateCard = ({ item }) => (
     <TouchableOpacity style={styles.dateCard} onPress={() => openDetails(item)}>
       <View style={styles.dateCardLeft}>
         <View style={styles.iconCircle}>
-          <Ionicons name="calendar" size={24} color="#2952a3" />
+          <Ionicons name="calendar" size={24} color={COLORS.primaryBlue} />
         </View>
         <View>
           <Text style={styles.dateTitle}>Meeting on</Text>
           <Text style={styles.dateValue}>{new Date(item.meeting_date).toDateString()}</Text>
         </View>
       </View>
-      <Ionicons name="chevron-forward" size={24} color="#ccc" />
+      <Ionicons name="chevron-forward" size={24} color={COLORS.textMuted} />
     </TouchableOpacity>
   );
 
-  // Helper to parse attendance inside the Modal
   const renderAttendanceDetails = () => {
     if (!selectedRecord || !selectedRecord.attendance_data) {
       return <Text style={styles.missingText}>No attendance recorded for this date.</Text>;
@@ -79,7 +77,7 @@ const MeetingHistoryScreen = ({ route, navigation }) => {
     return (
       <View style={styles.detailCard}>
         <View style={styles.detailCardHeader}>
-          <Ionicons name="people" size={20} color="#28a745" />
+          <Ionicons name="people" size={20} color={COLORS.success} />
           <Text style={styles.detailCardTitle}>Attendance Log</Text>
         </View>
         
@@ -105,20 +103,18 @@ const MeetingHistoryScreen = ({ route, navigation }) => {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#333" />
+          <Ionicons name="arrow-back" size={24} color={COLORS.textDark} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Meeting History</Text>
         <View style={{ width: 24 }} />
       </View>
 
-      {/* Main List */}
       {loading ? (
         <View style={styles.loaderContainer}>
-          <ActivityIndicator size="large" color="#2952a3" />
-          <Text style={{marginTop: 10, color: '#666'}}>Fetching records...</Text>
+          <ActivityIndicator size="large" color={COLORS.primaryBlue} />
+          <Text style={{marginTop: 10, color: COLORS.textGray}}>Fetching records...</Text>
         </View>
       ) : (
         <FlatList
@@ -132,12 +128,11 @@ const MeetingHistoryScreen = ({ route, navigation }) => {
         />
       )}
 
-      {/* THE DETAILS MODAL */}
       <Modal visible={detailModalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setDetailModalVisible(false)}>
         <SafeAreaView style={styles.modalContainer}>
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={() => setDetailModalVisible(false)} style={styles.closeButton}>
-              <Ionicons name="close" size={28} color="#333" />
+              <Ionicons name="close" size={28} color={COLORS.textDark} />
             </TouchableOpacity>
             <View style={{alignItems: 'center'}}>
               <Text style={styles.modalHeaderTitle}>Meeting Details</Text>
@@ -147,10 +142,9 @@ const MeetingHistoryScreen = ({ route, navigation }) => {
           </View>
 
           <ScrollView style={styles.modalScroll}>
-            {/* 1. Minutes Section */}
             <View style={styles.detailCard}>
               <View style={styles.detailCardHeader}>
-                <Ionicons name="document-text" size={20} color="#2952a3" />
+                <Ionicons name="document-text" size={20} color={COLORS.primaryBlue} />
                 <Text style={styles.detailCardTitle}>Meeting Minutes</Text>
               </View>
               {selectedRecord?.minutes_text ? (
@@ -160,56 +154,50 @@ const MeetingHistoryScreen = ({ route, navigation }) => {
               )}
             </View>
 
-            {/* 2. Attendance Section */}
             {renderAttendanceDetails()}
             
             <View style={{height: 40}}/>
           </ScrollView>
         </SafeAreaView>
       </Modal>
-
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f6f8' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
-  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#333' },
+  container: { flex: 1, backgroundColor: COLORS.bgLight },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, backgroundColor: COLORS.bgWhite, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
+  headerTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.textDark },
   backButton: { padding: 5 },
   loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   listContainer: { padding: 15 },
-  emptyText: { textAlign: 'center', color: '#888', marginTop: 50, fontSize: 16 },
+  emptyText: { textAlign: 'center', color: COLORS.textMuted, marginTop: 50, fontSize: 16 },
 
-  // Main List Styles
-  dateCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#fff', padding: 15, borderRadius: 12, marginBottom: 12, elevation: 1 },
+  dateCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: COLORS.bgWhite, padding: 15, borderRadius: 12, marginBottom: 12, elevation: 1 },
   dateCardLeft: { flexDirection: 'row', alignItems: 'center' },
-  iconCircle: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#eef2ff', justifyContent: 'center', alignItems: 'center', marginRight: 15 },
-  dateTitle: { fontSize: 12, color: '#888', fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
-  dateValue: { fontSize: 16, fontWeight: 'bold', color: '#333', marginTop: 2 },
+  iconCircle: { width: 48, height: 48, borderRadius: 24, backgroundColor: COLORS.primaryBlueLight, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+  dateTitle: { fontSize: 12, color: COLORS.textMuted, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  dateValue: { fontSize: 16, fontWeight: 'bold', color: COLORS.textDark, marginTop: 2 },
 
-  // Modal Styles
-  modalContainer: { flex: 1, backgroundColor: '#f4f6f8' },
-  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 15, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
+  modalContainer: { flex: 1, backgroundColor: COLORS.bgLight },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 15, backgroundColor: COLORS.bgWhite, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
   closeButton: { padding: 5 },
-  modalHeaderTitle: { fontSize: 16, fontWeight: 'bold', color: '#333' },
-  modalHeaderDate: { fontSize: 13, color: '#2952a3', fontWeight: 'bold', marginTop: 2 },
+  modalHeaderTitle: { fontSize: 16, fontWeight: 'bold', color: COLORS.textDark },
+  modalHeaderDate: { fontSize: 13, color: COLORS.primaryBlue, fontWeight: 'bold', marginTop: 2 },
   modalScroll: { padding: 15 },
 
-  // Detail Cards inside Modal
-  detailCard: { backgroundColor: '#fff', padding: 20, borderRadius: 16, marginBottom: 15, elevation: 2 },
-  detailCardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 10 },
-  detailCardTitle: { fontSize: 16, fontWeight: 'bold', color: '#333', marginLeft: 10 },
-  recordText: { fontSize: 15, color: '#444', lineHeight: 24 },
-  missingText: { fontSize: 14, color: '#888', fontStyle: 'italic' },
+  detailCard: { backgroundColor: COLORS.bgWhite, padding: 20, borderRadius: 16, marginBottom: 15, elevation: 2 },
+  detailCardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight, paddingBottom: 10 },
+  detailCardTitle: { fontSize: 16, fontWeight: 'bold', color: COLORS.textDark, marginLeft: 10 },
+  recordText: { fontSize: 15, color: COLORS.textGray, lineHeight: 24 },
+  missingText: { fontSize: 14, color: COLORS.textMuted, fontStyle: 'italic' },
 
-  // Attendance Specific Styles
-  attendanceStats: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15, paddingBottom: 15, borderBottomWidth: 1, borderBottomColor: '#eee' },
-  presentText: { fontSize: 16, color: '#28a745', fontWeight: 'bold' },
-  absentText: { fontSize: 16, color: '#dc3545', fontWeight: 'bold' },
+  attendanceStats: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15, paddingBottom: 15, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
+  presentText: { fontSize: 16, color: COLORS.success, fontWeight: 'bold' },
+  absentText: { fontSize: 16, color: COLORS.danger, fontWeight: 'bold' },
   namesSection: { marginTop: 5 },
-  namesLabel: { fontSize: 13, fontWeight: 'bold', color: '#555', marginBottom: 4 },
-  namesList: { fontSize: 14, color: '#777', lineHeight: 22 },
+  namesLabel: { fontSize: 13, fontWeight: 'bold', color: COLORS.textGray, marginBottom: 4 },
+  namesList: { fontSize: 14, color: COLORS.textMuted, lineHeight: 22 },
 });
 
 export default MeetingHistoryScreen;

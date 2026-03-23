@@ -1,14 +1,15 @@
 import React, { useState, useCallback } from 'react';
-import { useTranslation } from 'react-i18next'; // <-- IMPORTED TRANSLATION
+import { useTranslation } from 'react-i18next'; 
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator, Alert, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import * as SecureStore from 'expo-secure-store';
 import api from '../services/api';
+import { COLORS } from '../constants/theme'; // <-- BRAND THEME IMPORTED
 
 const MembersScreen = ({ route, navigation }) => {
-  const { t } = useTranslation(); // <-- INITIALIZED HOOK
+  const { t } = useTranslation(); 
   const { groupId, role, groupDetails } = route.params || {};
   const isAdmin = role === 'admin';
 
@@ -78,14 +79,14 @@ const MembersScreen = ({ route, navigation }) => {
   };
 
   if (loading) {
-    return <View style={styles.centered}><ActivityIndicator size="large" color="#2952a3" /></View>;
+    return <View style={styles.centered}><ActivityIndicator size="large" color={COLORS.primaryBlue} /></View>;
   }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#333" />
+          <Ionicons name="arrow-back" size={24} color={COLORS.textDark} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('membersList.title', 'Group Directory')}</Text>
         <Text style={styles.memberCount}>{members.length} {t('groupDetails.btnMembers', 'Members')}</Text>
@@ -94,19 +95,19 @@ const MembersScreen = ({ route, navigation }) => {
       {isAdmin && (
         <View style={styles.adminActionRow}>
           <TouchableOpacity 
-            style={[styles.adminBtn, { backgroundColor: '#eef2f9', marginRight: 10 }]} 
+            style={[styles.adminBtn, { backgroundColor: COLORS.primaryBlueLight, marginRight: 10 }]} 
             onPress={handleShareInvite}
           >
-            <Ionicons name="share-social" size={20} color="#2952a3" />
-            <Text style={[styles.adminBtnText, { color: '#2952a3' }]}>{t('groupDetails.shareBtn', 'Share Invite Code')}</Text>
+            <Ionicons name="share-social" size={20} color={COLORS.primaryBlue} />
+            <Text style={[styles.adminBtnText, { color: COLORS.primaryBlue }]}>{t('groupDetails.shareBtn', 'Share Invite Code')}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity 
-            style={[styles.adminBtn, { backgroundColor: '#2952a3' }]} 
+            style={[styles.adminBtn, { backgroundColor: COLORS.primaryBlue }]} 
             onPress={() => navigation.navigate('AddMember', { groupId: groupId })} 
           >
-            <Ionicons name="person-add" size={20} color="#fff" />
-            <Text style={[styles.adminBtnText, { color: '#fff' }]}>{t('membersList.addMemberBtn', 'Add Manually')}</Text>
+            <Ionicons name="person-add" size={20} color={COLORS.bgWhite} />
+            <Text style={[styles.adminBtnText, { color: COLORS.bgWhite }]}>{t('membersList.addMemberBtn', 'Add Manually')}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -123,26 +124,26 @@ const MembersScreen = ({ route, navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f6f8' },
+  container: { flex: 1, backgroundColor: COLORS.bgLight },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { flexDirection: 'row', alignItems: 'center', padding: 20, backgroundColor: '#fff', borderBottomWidth: 1, borderBottomColor: '#eee' },
+  header: { flexDirection: 'row', alignItems: 'center', padding: 20, backgroundColor: COLORS.bgWhite, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
   backButton: { marginRight: 15 },
-  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#333', flex: 1 },
-  memberCount: { fontSize: 14, color: '#888', fontWeight: 'bold', backgroundColor: '#eef2f9', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-  adminActionRow: { flexDirection: 'row', padding: 20, backgroundColor: '#fff', elevation: 1, marginBottom: 10 },
+  headerTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.textDark, flex: 1 },
+  memberCount: { fontSize: 14, color: COLORS.primaryBlue, fontWeight: 'bold', backgroundColor: COLORS.primaryBlueLight, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  adminActionRow: { flexDirection: 'row', padding: 20, backgroundColor: COLORS.bgWhite, elevation: 1, marginBottom: 10 },
   adminBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 10 },
   adminBtnText: { marginLeft: 8, fontWeight: 'bold', fontSize: 14 },
   listContainer: { padding: 20, paddingBottom: 40 },
-  memberCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 15, borderRadius: 12, marginBottom: 12, elevation: 1 },
-  avatarCircle: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#f4f6f8', justifyContent: 'center', alignItems: 'center', marginRight: 15 },
-  avatarText: { fontSize: 18, fontWeight: 'bold', color: '#2952a3' },
+  memberCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bgWhite, padding: 15, borderRadius: 12, marginBottom: 12, elevation: 1 },
+  avatarCircle: { width: 46, height: 46, borderRadius: 23, backgroundColor: COLORS.bgLight, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+  avatarText: { fontSize: 18, fontWeight: 'bold', color: COLORS.primaryBlue },
   memberInfo: { flex: 1 },
-  memberName: { fontSize: 16, fontWeight: 'bold', color: '#333' },
-  memberContact: { fontSize: 13, color: '#888', marginTop: 3 },
-  roleBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: '#f4f6f8' },
+  memberName: { fontSize: 16, fontWeight: 'bold', color: COLORS.textDark },
+  memberContact: { fontSize: 13, color: COLORS.textMuted, marginTop: 3 },
+  roleBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: COLORS.bgLight },
   roleText: { fontSize: 11, fontWeight: 'bold', textTransform: 'uppercase' },
-  textAdmin: { color: '#e67e22' },
-  textMember: { color: '#888' }
+  textAdmin: { color: COLORS.warning },
+  textMember: { color: COLORS.textGray }
 });
 
 export default MembersScreen;

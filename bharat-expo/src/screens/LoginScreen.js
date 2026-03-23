@@ -12,16 +12,18 @@ import {
   ActivityIndicator,
   Platform,        
   StatusBar,
-  KeyboardAvoidingView 
+  KeyboardAvoidingView,
+  Image
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context'; 
 
 import { Picker } from '@react-native-picker/picker';
 import { Ionicons } from '@expo/vector-icons';
 import api from '../services/api';
+import { COLORS } from '../constants/theme'; 
 
 const LoginScreen = ({ navigation }) => {
-  const { t, i18n } = useTranslation(); // <-- TRANSLATION HOOK
+  const { t, i18n } = useTranslation(); 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -32,9 +34,11 @@ const LoginScreen = ({ navigation }) => {
   
   const [otpSent, setOtpSent] = useState(false);
   const [otpInput, setOtpInput] = useState('');
-  const [language, setLanguage] = useState(i18n.language || 'en'); // Default to current i18n language
+  const [language, setLanguage] = useState(i18n.language || 'en'); 
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({});
+
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   const nameRef = useRef(null);
   const phoneRef = useRef(null);
@@ -42,9 +46,14 @@ const LoginScreen = ({ navigation }) => {
   const passwordRef = useRef(null);
 
   const handlePasswordLogin = async () => {
+    if (!agreedToTerms) {
+      Alert.alert(t('common.actionRequired', "Action Required"), t('authAlerts.termsAgreePrompt', "You must agree to the Terms of Service & Privacy Policy to continue."));
+      return;
+    }
+
     let newErrors = {};
-    if (!email) newErrors.email = "Email is required";
-    if (!password) newErrors.password = "Password is required";
+    if (!email) newErrors.email = t('errors.invalidEmail', "Please enter a valid email address.");
+    if (!password) newErrors.password = t('errors.emptyPassword', "Please enter your password.");
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
@@ -60,22 +69,31 @@ const LoginScreen = ({ navigation }) => {
       });
       
       await SecureStore.setItemAsync('userToken', response.data.access_token);
-      navigation.replace('Dashboard');
+      navigation.replace('MainTabs');
     } catch (error) {
-      Alert.alert("Login Failed", "Invalid email or password.");
+      Alert.alert(t('authAlerts.loginFailed', "Login Failed"), t('authAlerts.invalidCreds', "Invalid email or password."));
     } finally {
       setLoading(false);
     }
   };
 
   const handleSendOtp = async () => {
+    if (!agreedToTerms) {
+      Alert.alert(t('common.actionRequired', "Action Required"), t('authAlerts.termsAgreePrompt', "You must agree to the Terms of Service & Privacy Policy to continue."));
+      return;
+    }
+
     let newErrors = {};
-    if (!email) newErrors.email = "Email is required";
+    if (!email) newErrors.email = t('errors.invalidEmail', "Please enter a valid email address.");
     
     if (isRegistering) {
-        if (!name) newErrors.name = "Full name is required";
-        if (!phone || phone.length !== 10) newErrors.phone = "Valid 10-digit mobile number is required";
-        if (!password) newErrors.password = "Password is required";
+        if (!name) newErrors.name = t('errors.emptyName', "Please enter the full name.");
+        if (!phone || phone.length !== 10) newErrors.phone = t('errors.invalidPhone', "Please enter a valid 10-digit mobile number.");
+        if (!password) {
+          newErrors.password = t('errors.emptyPassword', "Please enter your password.");
+        } else if (password.length < 6) {
+          newErrors.password = t('errors.shortPassword', "Password must be at least 6 characters long.");
+        }
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -96,19 +114,19 @@ const LoginScreen = ({ navigation }) => {
         const response = await api.post('/send-otp', payload);
         setOtpSent(true);
         
-        Alert.alert("OTP Sent", "Please check your email for the 4-digit OTP.");
+        Alert.alert(t('authAlerts.otpSent', "OTP Sent"), t('authAlerts.otpSentDesc', "Please check your email for the 4-digit OTP."));
 
     } catch (error) {
         if (!error.response) {
-            Alert.alert("Connection Error", "Cannot reach the server. Please check your internet connection.");
+            Alert.alert(t('authAlerts.connError', "Connection Error"), t('authAlerts.connErrorDesc', "Cannot reach the server. Please check your internet connection."));
         } else {
             const serverMessage = error.response.data.message;
             
             if (serverMessage && serverMessage.includes('New user')) {
                 setIsRegistering(true); 
-                Alert.alert("Welcome!", "Looks like you are new here. Please fill in your details to create an account.");
+                Alert.alert(t('authAlerts.welcome', "Welcome!"), t('authAlerts.welcomeDesc', "Looks like you are new here. Please fill in your details to create an account."));
             } else {
-                Alert.alert("Notice", serverMessage || "Validation Error");
+                Alert.alert(t('authAlerts.notice', "Notice"), serverMessage || t('authAlerts.valError', "Validation Error"));
             }
         }
     } finally {
@@ -118,7 +136,7 @@ const LoginScreen = ({ navigation }) => {
 
   const handleVerifyOtp = async () => {
      let newErrors = {};
-     if (!otpInput) newErrors.otpInput = "Please enter the 4-digit OTP";
+     if (!otpInput) newErrors.otpInput = t('errors.emptyOtp', "Please enter the 4-digit OTP.");
 
      if (Object.keys(newErrors).length > 0) {
         setErrors(newErrors);
@@ -131,12 +149,12 @@ const LoginScreen = ({ navigation }) => {
         const response = await api.post('/verify-otp', {
             email: email.trim().toLowerCase(), 
             otp: Number(otpInput.trim()),      
-            language: language // Sends selected language to backend!
+            language: language 
         });
         await SecureStore.setItemAsync('userToken', response.data.access_token);
-        navigation.replace('Dashboard');
+        navigation.replace('MainTabs');
      } catch (error) {
-        Alert.alert("Error", "Invalid OTP. Please try again.");
+        Alert.alert(t('common.error', "Error"), t('authAlerts.invalidOtp', "Invalid OTP. Please try again."));
      } finally {
         setLoading(false);
      }
@@ -164,28 +182,30 @@ const LoginScreen = ({ navigation }) => {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.logoContainer}>
-              <Text style={{fontSize: 40}}>💰</Text>
+              <Image 
+                source={require('../../assets/logo.png')} 
+                style={styles.logoImage} 
+                resizeMode="contain" 
+              />
           </View>
           
-          {/* TRANSLATED TITLES */}
-          <Text style={styles.title}>{t('login.title', 'Bharat Bachat')}</Text>
           <Text style={styles.subtitle}>
               {isRegistering 
                 ? t('login.subtitleRegister', 'Create your account') 
                 : t('login.subtitleLogin', 'Manage your Bachat Gat')}
           </Text>
 
-          {/* REGISTRATION SECTION */}
           {isRegistering && !otpSent && (
             <>
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>{t('login.fullName', 'Full Name')}</Text>
                 <View style={[styles.iconInputRow, errors.name && styles.errorBorder]}>
-                  <Ionicons name="person-outline" size={20} color={errors.name ? "#dc3545" : "#888"} />
+                  <Ionicons name="person-outline" size={20} color={errors.name ? COLORS.danger : COLORS.textMuted} />
                   <TextInput 
                     ref={nameRef}
                     style={styles.input} 
-                    placeholder="Sanket Dhamne" 
+                    placeholder={t('login.fullName', 'Enter Full Name')} 
+                    placeholderTextColor={COLORS.textMuted}
                     value={name} 
                     onChangeText={(text) => { setName(text); setErrors({...errors, name: null}); }} 
                     returnKeyType="next"
@@ -199,11 +219,12 @@ const LoginScreen = ({ navigation }) => {
               <View style={styles.inputContainer}>
                 <Text style={styles.label}>{t('login.mobileNumber', 'Mobile Number')}</Text>
                 <View style={[styles.iconInputRow, errors.phone && styles.errorBorder]}>
-                  <Ionicons name="call-outline" size={20} color={errors.phone ? "#dc3545" : "#888"} />
+                  <Ionicons name="call-outline" size={20} color={errors.phone ? COLORS.danger : COLORS.textMuted} />
                   <TextInput 
                     ref={phoneRef}
                     style={styles.input} 
                     placeholder="10 Digits" 
+                    placeholderTextColor={COLORS.textMuted}
                     value={phone} 
                     onChangeText={(text) => { setPhone(text); setErrors({...errors, phone: null}); }} 
                     keyboardType="numeric" 
@@ -218,15 +239,15 @@ const LoginScreen = ({ navigation }) => {
             </>
           )}
 
-          {/* EMAIL SECTION */}
           <View style={styles.inputContainer}>
             <Text style={styles.label}>{t('login.emailLabel', 'Email Address')}</Text>
             <View style={[styles.iconInputRow, errors.email && styles.errorBorder]}>
-              <Ionicons name="mail-outline" size={20} color={errors.email ? "#dc3545" : "#888"} />
+              <Ionicons name="mail-outline" size={20} color={errors.email ? COLORS.danger : COLORS.textMuted} />
               <TextInput 
                 ref={emailRef}
                 style={styles.input} 
                 placeholder="email@example.com" 
+                placeholderTextColor={COLORS.textMuted}
                 value={email} 
                 onChangeText={(text) => { setEmail(text); setErrors({...errors, email: null}); }} 
                 keyboardType="email-address" 
@@ -246,18 +267,18 @@ const LoginScreen = ({ navigation }) => {
             {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
           </View>
 
-          {/* PASSWORD SECTION */}
           {(isRegistering || usePasswordLogin) && !otpSent && (
             <View style={styles.inputContainer}>
                 <Text style={styles.label}>
                   {isRegistering ? t('login.setPassword', 'Set Password') : t('login.password', 'Password')}
                 </Text>
                 <View style={[styles.iconInputRow, errors.password && styles.errorBorder]}>
-                  <Ionicons name="lock-closed-outline" size={20} color={errors.password ? "#dc3545" : "#888"} />
+                  <Ionicons name="lock-closed-outline" size={20} color={errors.password ? COLORS.danger : COLORS.textMuted} />
                   <TextInput 
                     ref={passwordRef}
                     style={styles.input} 
                     placeholder="********" 
+                    placeholderTextColor={COLORS.textMuted}
                     value={password} 
                     onChangeText={(text) => { setPassword(text); setErrors({...errors, password: null}); }} 
                     secureTextEntry 
@@ -269,7 +290,6 @@ const LoginScreen = ({ navigation }) => {
             </View>
           )}
 
-          {/* INSTANT LANGUAGE SELECTION */}
           {!otpSent && !isRegistering && !usePasswordLogin && (
             <View style={styles.inputContainer}>
                 <Text style={styles.label}>{t('login.language', 'Language')}</Text>
@@ -278,7 +298,7 @@ const LoginScreen = ({ navigation }) => {
                       selectedValue={language} 
                       onValueChange={(itemValue) => {
                         setLanguage(itemValue);
-                        i18n.changeLanguage(itemValue); // <-- INSTANTLY TRANSLATES THE UI
+                        i18n.changeLanguage(itemValue); 
                       }} 
                       style={styles.picker}
                     >
@@ -290,13 +310,13 @@ const LoginScreen = ({ navigation }) => {
             </View>
           )}
 
-          {/* OTP INPUT SECTION */}
           {otpSent && (
              <View style={styles.inputContainer}>
                 <Text style={styles.label}>{t('login.enterOtp', 'Enter 4-Digit OTP')}</Text>
                 <TextInput 
                   style={[styles.otpInput, errors.otpInput && styles.errorBorder]} 
                   placeholder="0 0 0 0" 
+                  placeholderTextColor={COLORS.textMuted}
                   value={otpInput} 
                   onChangeText={(text) => { setOtpInput(text); setErrors({...errors, otpInput: null}); }} 
                   keyboardType="number-pad" 
@@ -308,12 +328,31 @@ const LoginScreen = ({ navigation }) => {
            </View>
           )}
 
-          {/* ACTION BUTTON */}
+          {!otpSent && (
+            <View style={styles.consentContainer}>
+              <TouchableOpacity onPress={() => setAgreedToTerms(!agreedToTerms)}>
+                <Ionicons 
+                  name={agreedToTerms ? "checkbox" : "square-outline"} 
+                  size={24} 
+                  color={agreedToTerms ? COLORS.primaryBlue : COLORS.textMuted} 
+                />
+              </TouchableOpacity>
+              <View style={styles.consentTextContainer}>
+                <Text style={styles.consentText}>{t('login.iAgreeTo', 'I agree to the ')}</Text>
+                <TouchableOpacity onPress={() => navigation.navigate('TermsScreen')}>
+                  <Text style={styles.consentLink}>
+                    {t('login.termsLink', 'Terms of Service & Privacy Policy')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
           <TouchableOpacity 
             style={styles.button} 
             onPress={otpSent ? handleVerifyOtp : (usePasswordLogin ? handlePasswordLogin : handleSendOtp)}
           >
-            {loading ? <ActivityIndicator color="#fff" /> : (
+            {loading ? <ActivityIndicator color={COLORS.bgWhite} /> : (
                 <Text style={styles.buttonText}>
                     {otpSent 
                       ? t('login.btnVerify', 'Verify & Login') 
@@ -322,7 +361,6 @@ const LoginScreen = ({ navigation }) => {
             )}
           </TouchableOpacity>
 
-          {/* FOOTER TOGGLES */}
           {!otpSent && (
             <View style={styles.footer}>
                 <TouchableOpacity onPress={() => toggleMode('register')}>
@@ -351,25 +389,33 @@ const LoginScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#fff', paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0 },
-  container: { flexGrow: 1, padding: 24, backgroundColor: '#fff', justifyContent: 'center' },
-  logoContainer: { alignSelf: 'center', marginBottom: 20, backgroundColor: '#2952a3', padding: 20, borderRadius: 15},
-  title: { fontSize: 28, fontWeight: 'bold', color: '#333', textAlign: 'center' },
-  subtitle: { fontSize: 16, color: '#888', textAlign: 'center', marginBottom: 30 },
+  safeArea: { flex: 1, backgroundColor: COLORS.bgWhite, paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0 },
+  container: { flexGrow: 1, padding: 24, backgroundColor: COLORS.bgWhite, justifyContent: 'center' },
+  
+  logoContainer: { alignSelf: 'center', marginBottom: 10, marginTop: 10 },
+  logoImage: { width: 220, height: 140 },
+
+  subtitle: { fontSize: 16, color: COLORS.textGray, textAlign: 'center', marginBottom: 30 },
   inputContainer: { marginBottom: 18 },
-  label: { fontSize: 14, color: '#333', marginBottom: 8, fontWeight: '600' },
-  iconInputRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#f8f9fa', borderRadius: 10, paddingHorizontal: 15, borderWidth: 1, borderColor: '#eee' },
-  input: { flex: 1, padding: 15, fontSize: 16, color: '#333' },
-  otpInput: { backgroundColor: '#f8f9fa', borderRadius: 10, padding: 15, fontSize: 24, textAlign: 'center', letterSpacing: 10, borderWidth: 1, borderColor: '#2952a3' },
-  pickerWrapper: { backgroundColor: '#f8f9fa', borderRadius: 10, borderWidth: 1, borderColor: '#eee', overflow: 'hidden'},
-  picker: { height: 55 },
-  button: { backgroundColor: '#2952a3', padding: 18, borderRadius: 12, alignItems: 'center', marginTop: 10, elevation: 2 },
-  buttonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  label: { fontSize: 14, color: COLORS.textDark, marginBottom: 8, fontWeight: '600' },
+  iconInputRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bgLight, borderRadius: 10, paddingHorizontal: 15, borderWidth: 1, borderColor: COLORS.borderLight },
+  input: { flex: 1, padding: 15, fontSize: 16, color: COLORS.textDark },
+  otpInput: { backgroundColor: COLORS.bgLight, borderRadius: 10, padding: 15, fontSize: 24, textAlign: 'center', letterSpacing: 10, borderWidth: 1, borderColor: COLORS.primaryBlue, color: COLORS.textDark },
+  pickerWrapper: { backgroundColor: COLORS.bgLight, borderRadius: 10, borderWidth: 1, borderColor: COLORS.borderLight, overflow: 'hidden'},
+  picker: { height: 55, color: COLORS.textDark },
+  
+  consentContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, marginTop: 5, paddingHorizontal: 5 },
+  consentTextContainer: { flex: 1, marginLeft: 10, flexDirection: 'row', flexWrap: 'wrap' },
+  consentText: { color: COLORS.textGray, fontSize: 13 },
+  consentLink: { color: COLORS.primaryBlue, fontSize: 13, fontWeight: 'bold', textDecorationLine: 'underline' },
+
+  button: { backgroundColor: COLORS.primaryBlue, padding: 18, borderRadius: 12, alignItems: 'center', marginTop: 10, elevation: 2 },
+  buttonText: { color: COLORS.bgWhite, fontSize: 18, fontWeight: 'bold' },
   footer: { marginTop: 25 },
-  toggleText: { textAlign: 'center', color: '#2952a3', fontWeight: 'bold', fontSize: 16 },
-  secondaryToggle: { textAlign: 'center', color: '#888', fontWeight: '500', fontSize: 14 },
-  errorText: { color: '#dc3545', fontSize: 13, marginTop: 6, marginLeft: 4, fontWeight: '500' },
-  errorBorder: { borderColor: '#dc3545', borderWidth: 1.5 }
+  toggleText: { textAlign: 'center', color: COLORS.primaryBlue, fontWeight: 'bold', fontSize: 16 },
+  secondaryToggle: { textAlign: 'center', color: COLORS.textMuted, fontWeight: '500', fontSize: 14 },
+  errorText: { color: COLORS.danger, fontSize: 13, marginTop: 6, marginLeft: 4, fontWeight: '500' },
+  errorBorder: { borderColor: COLORS.danger, borderWidth: 1.5 }
 });
 
 export default LoginScreen;

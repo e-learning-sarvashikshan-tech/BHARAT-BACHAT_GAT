@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\GroupController;
 use App\Http\Controllers\Api\TransactionController;
 use App\Http\Controllers\Api\MeetingController;
 use App\Http\Controllers\Api\LoanController;
+use App\Http\Controllers\Api\NotificationController;
 
 /*
 |--------------------------------------------------------------------------
@@ -28,6 +29,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', function (Request $request) { return $request->user()->load('groups');});
     Route::get('/user/dashboard', [GroupController::class, 'dashboard']);
     Route::get('/user/portfolio', [GroupController::class, 'getPersonalPortfolio']);
+    Route::put('/user/profile/update', [AuthController::class, 'updateProfile']);
+    Route::post('/user/ledger/export', [TransactionController::class, 'exportUserLedger']);
+    Route::post('/user/profile/photo', [App\Http\Controllers\Api\AuthController::class, 'uploadProfilePhoto']);
 
     // Group & Member Management 
     Route::post('/group/create', [GroupController::class, 'createGroup']);
@@ -44,13 +48,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/group/{groupId}/corpus', [GroupController::class, 'getCorpusStats']);
     
     // Transaction / Ledger Routes
-    Route::get('/user/transactions', [TransactionController::class, 'getUserTransactions']);
+    Route::get('/user/transactions', [TransactionController::class, 'getUserTransactions']); // <-- FIXED: Flipped to match frontend!
     Route::post('/transactions/deposit', [TransactionController::class, 'deposit']);
     Route::get('/passbook', [TransactionController::class, 'passbook']);
     Route::put('/transactions/{id}', [TransactionController::class, 'update']);
     Route::delete('/transactions/{id}', [TransactionController::class, 'destroy']);
     Route::post('/group/{groupId}/transactions/batch', [TransactionController::class, 'storeBatch']);
     Route::post('/group/{groupId}/penalty', [TransactionController::class, 'chargePenalty']);
+    Route::post('/group/{groupId}/ledger/export', [TransactionController::class, 'exportGroupLedger']);
 
     // --- Loan Origination System ---
     Route::post('/group/{groupId}/loan/request', [LoanController::class, 'requestLoan']);
@@ -64,8 +69,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Meeting Minutes & Attendance Sync
     Route::post('/meetings/sync', [MeetingController::class, 'syncMinutes']);
 
-    // In App Notificatons
-    Route::get('/notifications', [App\Http\Controllers\Api\NotificationController::class, 'getNotifications']);
-    Route::post('/notifications/read', [App\Http\Controllers\Api\NotificationController::class, 'markAsRead']);
+    // In App Notifications
+    Route::get('/notifications', [NotificationController::class, 'getNotifications']);
+    Route::post('/notifications/read', [NotificationController::class, 'markAsRead']);
 
 });

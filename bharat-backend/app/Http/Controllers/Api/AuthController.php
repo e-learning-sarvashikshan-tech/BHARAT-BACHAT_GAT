@@ -239,4 +239,68 @@ class AuthController extends Controller
             ], 500);
         }
     }
+    public function updateProfile(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            $request->validate([
+                'name' => 'required|string|max:255',
+                'phone' => 'required|string|max:15'
+            ]);
+
+            $user->name = $request->name;
+            $user->phone = $request->phone;
+            $user->save();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Profile updated successfully!',
+                'user' => $user
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error', 
+                'message' => 'Failed to update profile: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+    public function uploadProfilePhoto(Request $request)
+    {
+        try {
+            // 1. Validate the file (must be an image, max 5MB)
+            $request->validate([
+                'profile_photo' => 'required|image|mimes:jpeg,png,jpg|max:5120', 
+            ]);
+
+            $user = Auth::user();
+
+            if ($request->hasFile('profile_photo')) {
+                // 2. Save the file to the 'public/profile_photos' directory
+                $path = $request->file('profile_photo')->store('profile_photos', 'public');
+
+                // 3. Generate the full public URL so the app can render it
+                $photoUrl = asset('storage/' . $path);
+
+                // 4. Save the URL to the user's database record
+                $user->profile_photo_url = $photoUrl;
+                $user->save();
+
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Profile photo updated successfully',
+                    'photo_url' => $photoUrl
+                ], 200);
+            }
+
+            return response()->json(['status' => 'error', 'message' => 'No image uploaded.'], 400);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error', 
+                'message' => 'Failed to upload photo. ' . $e->getMessage()
+            ], 500);
+        }
+    }
 }

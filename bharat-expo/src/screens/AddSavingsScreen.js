@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
-import { useTranslation } from 'react-i18next'; // ADDED
+import { useTranslation } from 'react-i18next'; 
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, ActivityIndicator, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import api from '../services/api';
 import * as SecureStore from 'expo-secure-store';
-import * as Speech from 'expo-speech'; // <-- ADDED SPEECH LIBRARY
+import * as Speech from 'expo-speech'; 
+import { COLORS } from '../constants/theme'; // <-- BRAND THEME IMPORTED
 
 const AddSavingsScreen = ({ route, navigation }) => {
-  const { t, i18n } = useTranslation(); // <-- ADDED i18n
+  const { t, i18n } = useTranslation(); 
   const { groupId, members } = route.params;
   
   const [selectedUsers, setSelectedUsers] = useState(new Set());
@@ -54,8 +55,6 @@ const AddSavingsScreen = ({ route, navigation }) => {
       });
 
       if (response.data.status === 'success') {
-        
-        // --- CLEAN MULTILINGUAL VOICE ANNOUNCEMENT ---
         let speechText = `Deposit of ${amount} rupees is successful.`;
         let voiceLang = 'en-IN';
 
@@ -68,7 +67,6 @@ const AddSavingsScreen = ({ route, navigation }) => {
         }
 
         Speech.speak(speechText, { language: voiceLang, rate: 0.85 });
-        // ----------------------------------------
 
         Alert.alert(t('common.success', 'Success'), response.data.message || t('alerts.depositSuccess', 'Deposits saved successfully!'));
         navigation.goBack(); 
@@ -92,7 +90,7 @@ const AddSavingsScreen = ({ route, navigation }) => {
         <Ionicons 
           name={isSelected ? "checkbox" : "square-outline"} 
           size={24} 
-          color={isSelected ? "#2952a3" : "#ccc"} 
+          color={isSelected ? COLORS.primaryBlue : COLORS.textMuted} 
         />
         <View style={{ marginLeft: 15 }}>
           <Text style={styles.memberName}>{item.name}</Text>
@@ -104,10 +102,9 @@ const AddSavingsScreen = ({ route, navigation }) => {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* HEADER IS HERE */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#333" />
+          <Ionicons name="arrow-back" size={24} color={COLORS.textDark} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('addSavings.title', 'Deposit Funds')}</Text>
       </View>
@@ -117,6 +114,7 @@ const AddSavingsScreen = ({ route, navigation }) => {
         <TextInput
           style={styles.input}
           placeholder="e.g. 500"
+          placeholderTextColor={COLORS.textMuted}
           keyboardType="numeric"
           value={amount}
           onChangeText={setAmount}
@@ -141,11 +139,11 @@ const AddSavingsScreen = ({ route, navigation }) => {
 
       <View style={styles.footer}>
         <TouchableOpacity 
-          style={[styles.submitBtn, selectedUsers.size === 0 && { backgroundColor: '#ccc' }]} 
+          style={[styles.submitBtn, selectedUsers.size === 0 && { backgroundColor: COLORS.textMuted }]} 
           onPress={handleBatchSubmit}
           disabled={selectedUsers.size === 0 || loading}
         >
-          {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitBtnText}>{t('addSavings.confirmBtn', 'Submit')} {selectedUsers.size} {t('dashboard.recentTransactions', 'Deposits')}</Text>}
+          {loading ? <ActivityIndicator color={COLORS.bgWhite} /> : <Text style={styles.submitBtnText}>{t('addSavings.confirmBtn', 'Submit')} {selectedUsers.size} {t('dashboard.recentTransactions', 'Deposits')}</Text>}
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -153,23 +151,23 @@ const AddSavingsScreen = ({ route, navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f6f8' },
-  header: { flexDirection: 'row', alignItems: 'center', padding: 20, backgroundColor: '#fff', elevation: 2 },
+  container: { flex: 1, backgroundColor: COLORS.bgLight },
+  header: { flexDirection: 'row', alignItems: 'center', padding: 20, backgroundColor: COLORS.bgWhite, elevation: 2 },
   backButton: { marginRight: 15 },
-  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#333' },
-  inputSection: { padding: 20, backgroundColor: '#fff', marginBottom: 10 },
-  label: { fontSize: 14, fontWeight: 'bold', color: '#555', marginBottom: 8 },
-  input: { backgroundColor: '#f4f6f8', padding: 15, borderRadius: 10, fontSize: 18, fontWeight: 'bold' },
+  headerTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.textDark },
+  inputSection: { padding: 20, backgroundColor: COLORS.bgWhite, marginBottom: 10 },
+  label: { fontSize: 14, fontWeight: 'bold', color: COLORS.textGray, marginBottom: 8 },
+  input: { backgroundColor: COLORS.bgLight, padding: 15, borderRadius: 10, fontSize: 18, fontWeight: 'bold', color: COLORS.textDark },
   listHeader: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 15 },
-  listTitle: { fontSize: 16, fontWeight: 'bold', color: '#333' },
-  selectAllText: { color: '#2952a3', fontWeight: 'bold' },
-  row: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', padding: 15, borderRadius: 10, marginBottom: 10, elevation: 1 },
-  rowSelected: { backgroundColor: '#e6eeff', borderColor: '#2952a3', borderWidth: 1 },
-  memberName: { fontSize: 16, fontWeight: 'bold', color: '#333' },
-  memberStatus: { fontSize: 12, color: '#888', marginTop: 2 },
-  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, backgroundColor: '#fff', elevation: 10 },
-  submitBtn: { backgroundColor: '#28a745', padding: 15, borderRadius: 10, alignItems: 'center' },
-  submitBtnText: { color: '#fff', fontSize: 18, fontWeight: 'bold' }
+  listTitle: { fontSize: 16, fontWeight: 'bold', color: COLORS.textDark },
+  selectAllText: { color: COLORS.primaryBlue, fontWeight: 'bold' },
+  row: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bgWhite, padding: 15, borderRadius: 10, marginBottom: 10, elevation: 1 },
+  rowSelected: { backgroundColor: COLORS.primaryBlueLight, borderColor: COLORS.primaryBlue, borderWidth: 1 },
+  memberName: { fontSize: 16, fontWeight: 'bold', color: COLORS.textDark },
+  memberStatus: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
+  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, backgroundColor: COLORS.bgWhite, elevation: 10 },
+  submitBtn: { backgroundColor: COLORS.success, padding: 15, borderRadius: 10, alignItems: 'center' },
+  submitBtnText: { color: COLORS.bgWhite, fontSize: 18, fontWeight: 'bold' }
 });
 
 export default AddSavingsScreen;
