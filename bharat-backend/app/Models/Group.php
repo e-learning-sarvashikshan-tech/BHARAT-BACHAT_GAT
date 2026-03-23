@@ -12,7 +12,7 @@ class Group extends Model
     // This array allows the Controller to insert data into these columns
     protected $fillable = [
         'name', 
-        'monthly_contribution', 
+        'monthly_amount', 
         'invite_code', 
         'created_by'
     ];
