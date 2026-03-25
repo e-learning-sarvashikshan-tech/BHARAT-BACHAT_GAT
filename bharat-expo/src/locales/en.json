@@ -109,7 +109,15 @@
     "downloadStatement": "Download Statement",
     "editProfile": "Edit Personal Details",
     "saveChanges": "Save Changes",
-    "updateSuccess": "Your profile has been updated successfully!"
+    "updateSuccess": "Your profile has been updated successfully!",
+    "deleteAccountBtn": "Delete Account",
+    "deleteAccountTitle": "Delete Account",
+    "deleteAccountDesc": "Are you absolutely sure? This will permanently delete your profile. You cannot do this if you have active loans.",
+    "accountDeletedDesc": "Your account has been successfully removed.",
+    "deleteErrorFallback": "Please clear all active loans or group admin duties before deleting.",
+    "accountSettings": "Account Settings",
+    "support": "Support & About",
+    "terms": "Terms & Privacy Policy"
   },
   "dashboard": {
     "welcome": "Hello",
@@ -127,7 +135,11 @@
     "createGat": "Create Gat",
     "joinGat": "Join Gat",
     "faqHelp": "FAQ / Help",
-    "aboutApp": "About App"
+    "aboutApp": "About App",
+    "startMeeting": "Start Monthly Meeting",
+    "startMeetingSub": "Take attendance & collect savings",
+    "selectGroupTitle": "Select Bachat Gat",
+    "selectGroupSub": "Which group are you running a meeting for?"
   },
   "about": {
     "p1": "Bharat Bachat is a secure digital ledger designed specifically for Self-Help Groups (Bachat Gats).",
@@ -188,15 +200,26 @@
     "removeBtn": "Remove Member",
     "chargeFineTitle": "Add Fine",
     "amountPlaceholder": "Amount (e.g. ₹50)",
-    "reasonPlaceholder": "Reason (e.g. Late fee)"
+    "reasonPlaceholder": "Reason (e.g. Late fee)",
+    "sendReceipt": "Send Receipt",
+    "sendReminder": "Send Meeting Reminder",
+    "sendReminderSub": "Notify all members via WhatsApp",
+    "deleteGroupBtn": "Delete This Group",
+    "deleteGroupTitle": "Delete Bachat Gat",
+    "deleteGroupDesc": "Are you absolutely sure? This will permanently delete the group, all members, and all financial records. You can only do this if the group balance is exactly ₹0."
   },
   "createGroup": {
     "title": "Start a New Bachat Gat",
     "subtitle": "You will automatically become the Admin of this new group.",
     "gatName": "Bachat Gat Name",
+    "nameLabel": "Bachat Gat Name",
+    "namePlaceholder": "e.g., Mahila Bachat Gat Aundh",
     "nameTakenHint": "Please choose a different name.",
+    "nameError": "Please choose a different name.",
     "monthlyAmount": "Monthly Saving Amount (₹)",
+    "amountLabel": "Monthly Saving Amount (₹)",
     "btnCreate": "Create Group",
+    "createBtn": "Create Group",
     "nameTakenTitle": "Name Already Taken",
     "nameTakenDesc": "This group name already exists. Please choose a unique name.",
     "successDesc": "Group created successfully!"
@@ -205,7 +228,10 @@
     "title": "Join a Bachat Gat",
     "enterCode": "Enter Invite Code",
     "subtitle": "Ask your Gat Adhyaksha (Group Admin) for the 6-character secret code.",
+    "askAdmin": "Ask your Gat Adhyaksha (Group Admin) for the 6-character secret code to join their group.",
     "requestJoin": "Request to Join",
+    "requestBtn": "Request to Join",
+    "placeholder": "e.g., 1EC973",
     "invalidCode": "Invalid Code",
     "invalidCodeDesc": "Please enter a valid Invite Code.",
     "successJoinDesc": "Your request to join has been sent to the Admins. You will be added once they approve.",
@@ -224,6 +250,7 @@
   "notifications": {
     "title": "Notifications",
     "noNew": "No new notifications.",
+    "markAllRead": "Mark all as read",
     "actionPassbook": "Group Ledger",
     "actionMeeting": "Meeting Records"
   },
@@ -232,7 +259,18 @@
     "title": "Group Passbook",
     "downloadBtn": "Download Statement",
     "noRecords": "No transactions recorded yet.",
-    "fetchError": "Could not load the group passbook."
+    "fetchError": "Could not load the group passbook.",
+    "digitalPassbook": "Digital Passbook",
+    "officialPassbook": "OFFICIAL PASSBOOK",
+    "liveCorpus": "Live Group Corpus",
+    "exportCustom": "Export Custom PDF Statement",
+    "date": "Date",
+    "particulars": "Particulars",
+    "in": "In (+)",
+    "out": "Out (-)",
+    "bal": "Bal",
+    "digitallyVerified": "DIGITALLY VERIFIED",
+    "securityNote": "This digital passbook is cryptographically secured and matches the records held by your Gat Pramukh."
   },
   "exportLedger": {
     "btn": "Export Custom Statement",
@@ -288,11 +326,33 @@
     "reviewTitle": "Review Loan Details",
     "approvingFor": "Approving for",
     "setInterest": "Monthly Interest Rate (%)",
-    "enterAmount": "Enter amount received (₹)"
+    "enterAmount": "Enter amount received (₹)",
+    "selectGroup": "Select Group to Apply From",
+    "dropdownPlaceholder": "Select a Bachat Gat",
+    "proposedInterest": "Proposed Interest Rate (%)",
+    "defaultInterest": "Default is {{rate}}%",
+    "pendingBalance": "Pending Balance:",
+    "btnReject": "Reject"
   },
   "meeting": {
     "title": "Record Meeting",
-    "saveBtn": "Save Complete Meeting"
+    "saveBtn": "Save Complete Meeting",
+    "wizardTitle": "Meeting Wizard",
+    "step1Title": "Step 1: Roll Call",
+    "step1Sub": "Who is attending the meeting today?",
+    "step2Title": "Step 2: Financial Check",
+    "step2Sub": "Verify the cash collected matches attendance.",
+    "membersPresent": "Members Present:",
+    "monthlyRate": "Monthly Rate:",
+    "expectedCollection": "Expected Cash Collection:",
+    "collectionWarning": "Ensure you have physically collected ₹{{amount}} before proceeding to save.",
+    "step3Title": "Step 3: Official Minutes",
+    "step3Sub": "Record decisions, loan requests, or issues discussed.",
+    "btnBack": "Back",
+    "btnNext": "Next Step",
+    "btnFinish": "Finish & Save",
+    "successTitle": "Meeting Saved Successfully!",
+    "successDesc": "Records for {{date}} saved offline.\n\n{{present}}/{{total}} members present.\nMinutes recorded.\n\nThis will sync automatically when online."
   },
   "attendance": {
     "date": "Meeting Date",
@@ -316,6 +376,7 @@
     "home": "Home",
     "myGats": "My Gats",
     "portfolio": "Savings",
+    "loans": "Loans",
     "profile": "Profile"
   },
   "errors": {
@@ -330,5 +391,19 @@
     "serverError": "Server error. Please try again later.",
     "networkError": "No internet connection. Please check your network.",
     "fillAllFields": "Please fill in all required fields."
+  },
+  "whatsapp": {
+    "emiReminder": "🔔 *Loan EMI Reminder* 🔔\n\nDear {{memberName}},\nThis is a gentle reminder regarding your active loan in *{{groupName}}*.\n\n💰 *Monthly EMI:* ₹{{emiAmount}}\n🏦 *Pending Balance:* ₹{{pendingBalance}}\n\nPlease ensure your EMI is paid before the upcoming monthly meeting.\nThank you! 🙏",
+    "meetingReminder": "📅 *Monthly Meeting Reminder* 📅\n\nDear Members of *{{groupName}}*,\n\nThis is a gentle reminder that our monthly Bachat Gat meeting is coming up. Please remember to bring your monthly savings and passbooks.\n\nThank you! 🙏"
+  },
+  "fundDistribution": "Fund Distribution",
+    "in": "In",
+    "out": "Out",
+    "sendReminder": "Send Meeting Reminder",
+  "push": {
+    "meetingTitle": "📅 {{groupName}} Meeting Tomorrow!",
+    "meetingBody": "Don't forget to bring your monthly savings and passbook.",
+    "emiTitle": "💰 Loan EMI Due Soon",
+    "emiBody": "Your EMI of ₹{{emiAmount}} for {{groupName}} is due this week. Please keep the cash ready."
   }
 }

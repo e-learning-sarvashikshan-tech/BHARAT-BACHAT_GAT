@@ -111,23 +111,29 @@ const LoginScreen = ({ navigation }) => {
             password: isRegistering ? password : null, 
         };
 
-        const response = await api.post('/send-otp', payload);
-        setOtpSent(true);
+        await api.post('/send-otp', payload);
         
+        // Success
+        setOtpSent(true);
         Alert.alert(t('authAlerts.otpSent', "OTP Sent"), t('authAlerts.otpSentDesc', "Please check your email for the 4-digit OTP."));
 
     } catch (error) {
-        if (!error.response) {
-            Alert.alert(t('authAlerts.connError', "Connection Error"), t('authAlerts.connErrorDesc', "Cannot reach the server. Please check your internet connection."));
-        } else {
+        // --- THE FIX: SMART NETWORK TIMEOUT INTERCEPT ---
+        if (error.message === 'Network Error' || error.code === 'ECONNABORTED' || error.response?.status === 504) {
+          setOtpSent(true); // Force OTP input to show anyway!
+          Alert.alert(t('authAlerts.notice', "Notice"), "The network is slow, but your OTP might have been sent. Please check your inbox in a few seconds.");
+        } 
+        else if (error.response && error.response.data && error.response.data.message) {
             const serverMessage = error.response.data.message;
-            
-            if (serverMessage && serverMessage.includes('New user')) {
+            if (serverMessage.includes('New user')) {
                 setIsRegistering(true); 
                 Alert.alert(t('authAlerts.welcome', "Welcome!"), t('authAlerts.welcomeDesc', "Looks like you are new here. Please fill in your details to create an account."));
             } else {
                 Alert.alert(t('authAlerts.notice', "Notice"), serverMessage || t('authAlerts.valError', "Validation Error"));
             }
+        } 
+        else {
+            Alert.alert(t('common.error', 'Error'), "Failed to send OTP.");
         }
     } finally {
         setLoading(false);
@@ -393,7 +399,7 @@ const styles = StyleSheet.create({
   container: { flexGrow: 1, padding: 24, backgroundColor: COLORS.bgWhite, justifyContent: 'center' },
   
   logoContainer: { alignSelf: 'center', marginBottom: 10, marginTop: 10 },
-  logoImage: { width: 220, height: 140 },
+  logoImage: { width: 280, height: 180 },
 
   subtitle: { fontSize: 16, color: COLORS.textGray, textAlign: 'center', marginBottom: 30 },
   inputContainer: { marginBottom: 18 },

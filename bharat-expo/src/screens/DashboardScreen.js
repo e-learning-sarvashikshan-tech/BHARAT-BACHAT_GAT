@@ -13,6 +13,7 @@ import {
   TextInput
 } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import AsyncStorage from '@react-native-async-storage/async-storage'; // <-- NEW: OFFLINE CACHE ENGINE
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import api from '../services/api';
@@ -41,23 +42,55 @@ const DashboardScreen = ({ navigation }) => {
   const [faqVisible, setFaqVisible] = useState(false);
   const [expandedFaq, setExpandedFaq] = useState(null);
 
+  const [meetingGroupModal, setMeetingGroupModal] = useState(false);
+
+  const DASHBOARD_CACHE_KEY = '@bharat_bachat_dashboard_cache'; // CACHE KEY
+
   const fetchData = useCallback(async () => {
     try {
       const token = await SecureStore.getItemAsync('userToken');
 
+      // --- 1. INSTANT OFFLINE LOAD (Optimistic UI) ---
+      const cachedData = await AsyncStorage.getItem(DASHBOARD_CACHE_KEY);
+      if (cachedData) {
+        const parsed = JSON.parse(cachedData);
+        setUserData(parsed.user);
+        setTotalSavings(parsed.total_savings);
+        setGroups(parsed.groups);
+        setRecentTransactions(parsed.recent_transactions);
+        setLoading(false); // Instantly drop the loading screen!
+      }
+
+      // --- 2. BACKGROUND SYNC (Fetch fresh data from Laravel) ---
       const userResponse = await api.get('/user', { headers: { Authorization: `Bearer ${token}` } });
-      setUserData(userResponse.data);
-
       const statsResponse = await api.get('/user/dashboard', { headers: { Authorization: `Bearer ${token}` } });
-      setTotalSavings(statsResponse.data.total_savings);
-      setGroups(statsResponse.data.groups || []);
-      setRecentTransactions(statsResponse.data.recent_transactions || []);
 
+      const freshUserData = userResponse.data;
+      const freshTotalSavings = statsResponse.data.total_savings;
+      const freshGroups = statsResponse.data.groups || [];
+      const freshTransactions = statsResponse.data.recent_transactions || [];
+
+      // Update UI with the fresh data
+      setUserData(freshUserData);
+      setTotalSavings(freshTotalSavings);
+      setGroups(freshGroups);
+      setRecentTransactions(freshTransactions);
+      setLoading(false);
+
+      // Save the fresh data to the phone's memory for the next time they open the app
+      await AsyncStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify({
+        user: freshUserData,
+        total_savings: freshTotalSavings,
+        groups: freshGroups,
+        recent_transactions: freshTransactions
+      }));
+
+      // --- 3. FETCH NOTIFICATIONS & PUSH OFFLINE ACTIONS ---
       try {
         const notifResponse = await api.get('/notifications', { headers: { Authorization: `Bearer ${token}` } });
         setUnreadCount(notifResponse.data.unread_count || 0);
       } catch (err) {
-        console.log("Could not fetch notifications", err);
+        console.log("Could not fetch notifications offline");
       }
 
       const unsynced = await getUnsyncedTransactions();
@@ -75,13 +108,13 @@ const DashboardScreen = ({ navigation }) => {
       if (error.response && error.response.status === 401) {
         console.log("Dead token detected. Auto-logging out...");
         await SecureStore.deleteItemAsync('userToken');
+        await AsyncStorage.removeItem(DASHBOARD_CACHE_KEY); // Clear cache on logout
         navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
         return; 
       }
-      console.error("Failed to fetch dashboard data:", error);
-    } finally {
-      setLoading(false);
-    }
+      console.error("Failed to fetch dashboard data (Likely Offline):", error);
+      setLoading(false); // Make sure loading stops even if offline
+    } 
   }, [navigation]);
 
   useFocusEffect(useCallback(() => { runSilentSync(); fetchData(); }, [fetchData]));
@@ -94,6 +127,7 @@ const DashboardScreen = ({ navigation }) => {
 
   const handleLogout = async () => {
     await SecureStore.deleteItemAsync('userToken');
+    await AsyncStorage.removeItem(DASHBOARD_CACHE_KEY);
     navigation.replace('Login');
   };
 
@@ -141,6 +175,16 @@ const DashboardScreen = ({ navigation }) => {
     return group && group.pivot?.role === 'admin';
   };
 
+  const adminGroups = groups.filter(g => g.pivot.role === 'admin');
+  
+  const handleStartMeeting = () => {
+    if (adminGroups.length === 1) {
+      navigation.navigate('AddMeetingRecords', { groupId: adminGroups[0].id, role: 'admin' });
+    } else if (adminGroups.length > 1) {
+      setMeetingGroupModal(true);
+    }
+  };
+
   const toggleFaq = (id) => {
     setExpandedFaq(expandedFaq === id ? null : id);
   };
@@ -185,7 +229,6 @@ const DashboardScreen = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
-      {/* --- UPGRADED: FULL WIDTH PREMIUM WALLET CARD --- */}
       <View style={styles.walletContainer}>
         <TouchableOpacity style={[styles.card, styles.savingsCard]} onPress={() => navigation.navigate('Portfolio')} activeOpacity={0.9}>
           <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start'}}>
@@ -223,14 +266,26 @@ const DashboardScreen = ({ navigation }) => {
         </ScrollView>
       </View>
 
+      {adminGroups.length > 0 && (
+        <TouchableOpacity style={styles.wizardBanner} onPress={handleStartMeeting} activeOpacity={0.8}>
+          <View style={styles.wizardIconBox}>
+            <Ionicons name="calendar" size={28} color={COLORS.bgWhite} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.wizardTitle}>{t('dashboard.startMeeting', 'Start Monthly Meeting')}</Text>
+            <Text style={styles.wizardSubtitle}>{t('dashboard.startMeetingSub', 'Take attendance & collect savings')}</Text>
+          </View>
+          <Ionicons name="arrow-forward-circle" size={32} color={COLORS.primaryBlue} />
+        </TouchableOpacity>
+      )}
+
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>{t('dashboard.myGroups', 'My Bachat Gats')}</Text>
-          {/* --- FIXED: NAVIGATION ROUTED TO TAB 'MyGats' INSTEAD OF 'GroupsHub' --- */}
           <TouchableOpacity onPress={() => navigation.navigate('MyGats')}><Text style={{ color: COLORS.primaryBlue, fontWeight: 'bold' }}>{t('dashboard.seeAll', 'See All')}</Text></TouchableOpacity>
         </View>
         {groups.length > 0 ? (
-          groups.slice(0, 3).map(group => ( // Only show top 3 on dashboard
+          groups.slice(0, 3).map(group => ( 
             <TouchableOpacity key={group.id} style={styles.groupCard} onPress={() => navigation.navigate('GroupDetails', { groupId: group.id, role: group.pivot.role })}>
               <View style={styles.groupIconContainer}><Ionicons name="people" size={24} color={COLORS.primaryBlue} /></View>
               <View style={styles.groupInfo}>
@@ -262,20 +317,13 @@ const DashboardScreen = ({ navigation }) => {
                     <Ionicons name={tx.type === 'deposit' || tx.type === 'credit' ? "arrow-down-circle" : "arrow-up-circle"} size={32} color={isVoided ? COLORS.textMuted : (tx.type === 'deposit' || tx.type === 'credit' ? COLORS.success : COLORS.danger)} />
                   </View>
                   <View style={[styles.transactionDetails, { flex: 1, marginRight: 10, flexShrink: 1 }]}>
-  <Text 
-    style={[styles.transactionType, isVoided && { textDecorationLine: 'line-through', color: COLORS.textMuted }]} 
-    numberOfLines={1} 
-    ellipsizeMode="tail"
-  >
-      {tx.group?.name || t('ledger.transaction', 'Record')}
-  </Text>
-  <Text 
-    style={[styles.transactionDate, isEdited && {color: COLORS.warning, fontStyle: 'italic'}, isVoided && {color: COLORS.danger, fontWeight: 'bold'}]} 
-    numberOfLines={2}
-  >
-    {new Date(tx.transaction_date).toLocaleDateString()} • {formatTransactionMethod(tx.method)}
-  </Text>
-</View>
+                    <Text style={[styles.transactionType, isVoided && { textDecorationLine: 'line-through', color: COLORS.textMuted }]} numberOfLines={1} ellipsizeMode="tail">
+                        {tx.group?.name || t('ledger.transaction', 'Record')}
+                    </Text>
+                    <Text style={[styles.transactionDate, isEdited && {color: COLORS.warning, fontStyle: 'italic'}, isVoided && {color: COLORS.danger, fontWeight: 'bold'}]} numberOfLines={2}>
+                      {new Date(tx.transaction_date).toLocaleDateString()} • {formatTransactionMethod(tx.method)}
+                    </Text>
+                  </View>
                   <View style={styles.rightAlignedGroup}>
                     <Text style={[styles.transactionAmount, { color: isVoided ? COLORS.textMuted : (tx.type === 'deposit' || tx.type === 'credit' ? COLORS.success : COLORS.danger) }, isVoided && { textDecorationLine: 'line-through' }]}>
                       {tx.type === 'deposit' || tx.type === 'credit' ? '+' : '-'}₹{isVoided ? '0' : tx.amount}
@@ -297,6 +345,32 @@ const DashboardScreen = ({ navigation }) => {
           )}
         </View>
       </View>
+
+      <Modal visible={meetingGroupModal} transparent={true} animationType="fade" onRequestClose={() => setMeetingGroupModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{t('dashboard.selectGroupTitle', 'Select Bachat Gat')}</Text>
+            <Text style={{ color: COLORS.textGray, marginBottom: 20 }}>{t('dashboard.selectGroupSub', 'Which group are you running a meeting for?')}</Text>
+            {adminGroups.map(group => (
+              <TouchableOpacity 
+                key={group.id} 
+                style={styles.groupCard} 
+                onPress={() => {
+                  setMeetingGroupModal(false);
+                  navigation.navigate('AddMeetingRecords', { groupId: group.id, role: 'admin' });
+                }}
+              >
+                <View style={styles.groupIconContainer}><Ionicons name="people" size={24} color={COLORS.primaryBlue} /></View>
+                <Text style={[styles.groupNameText, { flex: 1, marginLeft: 15 }]}>{group.name}</Text>
+                <Ionicons name="chevron-forward" size={20} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity onPress={() => setMeetingGroupModal(false)} style={{ padding: 15, alignItems: 'center', marginTop: 10 }}>
+              <Text style={{ color: COLORS.danger, fontWeight: 'bold' }}>{t('common.cancel', 'Cancel')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={deleteModalVisible} transparent={true} animationType="fade">
         <View style={styles.modalOverlay}>
@@ -371,7 +445,6 @@ const styles = StyleSheet.create({
   badgeText: { color: COLORS.bgWhite, fontSize: 10, fontWeight: 'bold' },
   logoutButton: { padding: 10, backgroundColor: '#ffe6e6', borderRadius: 12, marginLeft: 10 },
   
-  // --- NEW WALLET CARD STYLE ---
   walletContainer: { paddingHorizontal: 20, paddingBottom: 20, paddingTop: 10 },
   card: { padding: 25, borderRadius: 16, elevation: 6, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: { width: 0, height: 5 } },
   savingsCard: { backgroundColor: COLORS.primaryBlue },
@@ -382,6 +455,11 @@ const styles = StyleSheet.create({
   actionPill: { backgroundColor: COLORS.bgWhite, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 16, marginRight: 12, alignItems: 'center', justifyContent: 'center', elevation: 2, minWidth: 90, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4, shadowOffset: { width: 0, height: 2 } },
   actionIconBox: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
   actionPillText: { fontSize: 12, fontWeight: 'bold', color: COLORS.textDark },
+
+  wizardBanner: { flexDirection: 'row', backgroundColor: '#f0f4ff', marginHorizontal: 20, padding: 15, borderRadius: 16, marginBottom: 25, alignItems: 'center', borderWidth: 1, borderColor: '#dbeafe', elevation: 2 },
+  wizardIconBox: { width: 50, height: 50, borderRadius: 25, backgroundColor: COLORS.primaryBlue, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+  wizardTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.primaryBlue },
+  wizardSubtitle: { fontSize: 13, color: '#475569', marginTop: 3 },
 
   section: { marginBottom: 25 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginHorizontal: 20, marginBottom: 15 },
