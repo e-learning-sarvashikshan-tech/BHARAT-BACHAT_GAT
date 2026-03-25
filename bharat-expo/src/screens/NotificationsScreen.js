@@ -1,13 +1,15 @@
 import React, { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next'; 
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import * as SecureStore from 'expo-secure-store';
 import api from '../services/api';
-import { COLORS } from '../constants/theme'; // <-- BRAND THEME IMPORTED
+import { COLORS } from '../constants/theme'; 
 
 const NotificationsScreen = ({ navigation }) => {
+  const { t } = useTranslation(); 
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -42,10 +44,13 @@ const NotificationsScreen = ({ navigation }) => {
   };
 
   const renderNotification = ({ item }) => {
-    let actionLabel = "Passbook";
+    let actionLabel = t('notifications.actionPassbook', "Group Ledger");
     if (item.group_id) {
-      actionLabel = item.title && item.title.includes('Meeting') ? "Meeting Records" : "Group Ledger";
+      actionLabel = item.title && item.title.includes('Meeting') ? t('notifications.actionMeeting', "Meeting Records") : t('notifications.actionPassbook', "Group Ledger");
     }
+
+    // Safely extract the group name if the backend provides it
+    const groupName = item.group?.name || item.group_name || null;
 
     return (
       <TouchableOpacity 
@@ -57,6 +62,14 @@ const NotificationsScreen = ({ navigation }) => {
           <Ionicons name="notifications" size={24} color={!item.is_read ? COLORS.primaryBlue : COLORS.textMuted} />
         </View>
         <View style={styles.textContainer}>
+          
+          {/* THE FIX: RESTORED GROUP NAME BADGE */}
+          {groupName && (
+            <View style={styles.groupBadge}>
+              <Text style={styles.groupBadgeText}>{groupName}</Text>
+            </View>
+          )}
+
           <Text style={[styles.title, !item.is_read && styles.unreadText]}>{item.title}</Text>
           <Text style={styles.message}>{item.message}</Text>
           
@@ -80,7 +93,7 @@ const NotificationsScreen = ({ navigation }) => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="arrow-back" size={24} color={COLORS.textDark} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Notifications</Text>
+        <Text style={styles.headerTitle}>{t('notifications.title', 'Notifications')}</Text>
       </View>
 
       {loading ? (
@@ -91,7 +104,7 @@ const NotificationsScreen = ({ navigation }) => {
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderNotification}
           contentContainerStyle={{ padding: 20 }}
-          ListEmptyComponent={<Text style={styles.emptyText}>No new notifications.</Text>}
+          ListEmptyComponent={<Text style={styles.emptyText}>{t('notifications.noNew', 'No new notifications.')}</Text>}
         />
       )}
     </SafeAreaView>
@@ -108,15 +121,18 @@ const styles = StyleSheet.create({
   unreadCard: { backgroundColor: COLORS.primaryBlueLight, borderColor: COLORS.primaryBlueLight, borderWidth: 1 },
   iconBox: { marginRight: 15, justifyContent: 'center' },
   textContainer: { flex: 1 },
+  
+  // THE FIX: NEW BADGE STYLES
+  groupBadge: { backgroundColor: '#e0f2fe', alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginBottom: 6 },
+  groupBadgeText: { fontSize: 10, color: '#0284c7', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 0.5 },
+  
   title: { fontSize: 16, fontWeight: 'bold', color: COLORS.textGray, marginBottom: 4 },
   unreadText: { color: COLORS.textDark },
   message: { fontSize: 14, color: COLORS.textGray, lineHeight: 20 },
-  
   footerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, gap: 10 },
   time: { fontSize: 11, color: COLORS.textMuted, flexShrink: 0 },
   actionLink: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.primaryBlueLight, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, flexShrink: 1 },
   actionText: { fontSize: 11, color: COLORS.primaryBlue, fontWeight: 'bold', marginRight: 2, flexShrink: 1 },
-  
   emptyText: { textAlign: 'center', color: COLORS.textMuted, marginTop: 50, fontSize: 16 }
 });
 

@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next'; 
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Share, Modal, TextInput, RefreshControl, Linking } from 'react-native'; // <-- ADDED LINKING
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Share, Modal, TextInput, RefreshControl, Linking, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -47,15 +47,8 @@ const CorpusDashboardCard = ({ groupId }) => {
           innerRadius={70}
           radius={100}
           data={[
-            { 
-              value: availableCash > 0 ? availableCash : 1, 
-              color: COLORS.success, 
-              focused: true 
-            },
-            { 
-              value: activeLoans > 0 ? activeLoans : 0, 
-              color: COLORS.warning 
-            }
+            { value: availableCash > 0 ? availableCash : 1, color: COLORS.success, focused: true },
+            { value: activeLoans > 0 ? activeLoans : 0, color: COLORS.warning }
           ]}
           centerLabelComponent={() => {
             return (
@@ -88,8 +81,8 @@ const CorpusDashboardCard = ({ groupId }) => {
 
       <View style={styles.flowFooter}>
         <Text style={styles.flowText}>
-          In: <Text style={{ color: COLORS.success, fontWeight: 'bold' }}>₹{stats.total_deposits.toLocaleString()}</Text>  |  
-          Out: <Text style={{ color: COLORS.danger, fontWeight: 'bold' }}>₹{stats.total_withdrawals.toLocaleString()}</Text>
+          {t('groupDetails.in', 'In')}: <Text style={{ color: COLORS.success, fontWeight: 'bold' }}>₹{stats.total_deposits.toLocaleString()}</Text>  |  
+          {t('groupDetails.out', 'Out')}: <Text style={{ color: COLORS.danger, fontWeight: 'bold' }}>₹{stats.total_withdrawals.toLocaleString()}</Text>
         </Text>
       </View>
     </View>
@@ -107,12 +100,8 @@ const GroupDetailsScreen = ({ route, navigation }) => {
   const [recentTransactions, setRecentTransactions] = useState([]);
   const [currentMonthName, setCurrentMonthName] = useState('');
   
-  const [activeLoansCount, setActiveLoansCount] = useState(0);
-  const [pendingLoansCount, setPendingLoansCount] = useState(0);
   const [loading, setLoading] = useState(true);
-
   const [refreshing, setRefreshing] = useState(false);
-
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
 
@@ -130,20 +119,14 @@ const GroupDetailsScreen = ({ route, navigation }) => {
   const fetchGroupData = useCallback(async () => {
     try {
       const token = await SecureStore.getItemAsync('userToken');
-      const response = await api.get(`/group/${groupId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
+      const response = await api.get(`/group/${groupId}`, { headers: { Authorization: `Bearer ${token}` } });
       const data = response.data;
       setGroupDetails(data.group);
       setMembers(data.members_status || []);
       setPendingMembers(data.pending_members || []);
       setRecentTransactions(data.recent_transactions || []);
       setCurrentMonthName(data.current_month_name);
-      setActiveLoansCount(data.active_loans_count || 0);
-      setPendingLoansCount(data.pending_loans_count || 0);
     } catch (error) {
-      console.error("Failed to fetch group details:", error);
       Alert.alert(t('common.error', 'Access Denied'), "You are not an approved member of this group.");
       navigation.goBack(); 
     } finally {
@@ -172,55 +155,38 @@ const GroupDetailsScreen = ({ route, navigation }) => {
   const formatTransactionMethod = (methodStr) => {
     if (!methodStr) return t('ledger.transaction', 'Record');
     let formatted = methodStr;
-    
-    if (formatted.includes('[Edited:')) {
-        formatted = formatted.replace('[Edited:', `[${t('dashboard.editedTag', 'Changed')}:`);
-    }
-    if (formatted.includes('VOIDED:')) {
-        formatted = formatted.replace('VOIDED:', `${t('dashboard.voidedTag', 'Cancelled')}:`);
-    }
+    if (formatted.includes('[Edited:')) formatted = formatted.replace('[Edited:', `[${t('dashboard.editedTag', 'Changed')}:`);
+    if (formatted.includes('VOIDED:')) formatted = formatted.replace('VOIDED:', `${t('dashboard.voidedTag', 'Cancelled')}:`);
     return formatted;
   };
 
-  // --- UPGRADED: WHATSAPP RECEIPT LOGIC ---
   const sendWhatsAppReceipt = (tx) => {
     const isDeposit = tx.type === 'deposit';
     const actionText = isDeposit ? t('common.deposit', 'Deposit') : t('common.withdrawal', 'Withdrawal');
     const symbol = isDeposit ? '🟢' : '🔴';
     const memberName = tx.user?.name || t('groupDetails.roleMember', 'Member');
     const dateFormatted = new Date(tx.transaction_date).toLocaleDateString('en-IN');
-    
-    // Pull the group name from the screen's state
     const groupName = groupDetails?.name || 'Bachat Gat';
-    
-    // Generate a sleek Reference ID using the database ID
     const txId = `TXN-${String(tx.id).padStart(5, '0')}`;
 
-    // Build a premium, enterprise-grade text receipt
-    const message = `*Bharat Bachat E-Receipt* 📄\n` +
-                    `------------------------\n` +
-                    `🏢 *Gat Name:* ${groupName}\n` +
-                    `👤 *Member:* ${memberName}\n\n` +
-                    `💰 *Amount:* ₹${tx.amount}\n` +
-                    `${symbol} *Type:* ${actionText}\n` +
-                    `📅 *Date:* ${dateFormatted}\n` +
-                    `🧾 *Ref ID:* ${txId}\n` +
-                    `📝 *Remarks:* ${tx.method || 'N/A'}\n` +
-                    `------------------------\n` +
-                    `_Generated securely via Bharat Bachat App_ ✅`;
+    const message = `*Bharat Bachat E-Receipt* 📄\n------------------------\n🏢 *Gat Name:* ${groupName}\n👤 *Member:* ${memberName}\n\n💰 *Amount:* ₹${tx.amount}\n${symbol} *Type:* ${actionText}\n📅 *Date:* ${dateFormatted}\n🧾 *Ref ID:* ${txId}\n📝 *Remarks:* ${tx.method || 'N/A'}\n------------------------\n_Generated securely via Bharat Bachat App_ ✅`;
 
-    // Encode for deep linking
     const whatsappUrl = `whatsapp://send?text=${encodeURIComponent(message)}`;
+    Linking.canOpenURL(whatsappUrl).then((supported) => {
+        if (!supported) Alert.alert(t('common.error', 'Error'), "WhatsApp is not installed on your device.");
+        else return Linking.openURL(whatsappUrl);
+      }).catch((err) => console.error('An error occurred', err));
+  };
 
-    Linking.canOpenURL(whatsappUrl)
-      .then((supported) => {
-        if (!supported) {
-          Alert.alert(t('common.error', 'Error'), "WhatsApp is not installed on your device.");
-        } else {
-          return Linking.openURL(whatsappUrl);
-        }
-      })
-      .catch((err) => console.error('An error occurred', err));
+  const sendMeetingReminder = () => {
+    const groupName = groupDetails?.name || 'Bachat Gat';
+    const message = t('whatsapp.meetingReminder', { groupName: groupName }); // <-- TRANSLATED WHATSAPP MSG
+
+    const whatsappUrl = `whatsapp://send?text=${encodeURIComponent(message)}`;
+    Linking.canOpenURL(whatsappUrl).then((supported) => {
+      if (!supported) Alert.alert('Error', 'WhatsApp is not installed.');
+      else Linking.openURL(whatsappUrl);
+    });
   };
 
   const handleApprove = async (userId) => {
@@ -295,6 +261,30 @@ const GroupDetailsScreen = ({ route, navigation }) => {
     }
   };
 
+  const handleDeleteGroup = () => {
+    Alert.alert(
+      t('groupDetails.deleteGroupTitle', "Delete Bachat Gat"), 
+      t('groupDetails.deleteGroupDesc', "Are you absolutely sure? This will permanently delete the group..."),
+      [
+        { text: t('common.cancel', "Cancel"), style: "cancel" },
+        { 
+          text: t('groupDetails.deleteGroupBtn', "Delete Group"), 
+          style: "destructive", 
+          onPress: async () => {
+            try {
+              const token = await SecureStore.getItemAsync('userToken');
+              await api.delete(`/group/${groupId}/delete`, { headers: { Authorization: `Bearer ${token}` } });
+              Alert.alert(t('common.success', "Success"), "Group has been permanently deleted.");
+              navigation.replace('MainTabs'); 
+            } catch (error) {
+              Alert.alert("Cannot Delete", error.response?.data?.message || "Group must have a ₹0 balance to be deleted.");
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const triggerPenaltyModal = () => {
     setPenaltyUser(selectedMember); 
     setPenaltyAmount('');
@@ -309,12 +299,7 @@ const GroupDetailsScreen = ({ route, navigation }) => {
     setSubmittingPenalty(true);
     try {
       const token = await SecureStore.getItemAsync('userToken');
-      await api.post(`/group/${groupId}/penalty`, {
-        user_id: penaltyUser.id,
-        amount: Number(penaltyAmount),
-        reason: penaltyReason
-      }, { headers: { Authorization: `Bearer ${token}` } });
-      
+      await api.post(`/group/${groupId}/penalty`, { user_id: penaltyUser.id, amount: Number(penaltyAmount), reason: penaltyReason }, { headers: { Authorization: `Bearer ${token}` } });
       Alert.alert(t('common.success', "Success"), t('alerts.fineSuccess', "Fine charged and added to Corpus!"));
       setPenaltyModalVisible(false);
       fetchGroupData(); 
@@ -333,15 +318,10 @@ const GroupDetailsScreen = ({ route, navigation }) => {
 
   const confirmDeleteTransaction = async () => {
     if (!deleteReason.trim()) return Alert.alert(t('common.error', "Error"), t('alerts.reasonRequired', "You must provide a reason for voiding this record."));
-    
     setSubmittingDelete(true);
     try {
       const token = await SecureStore.getItemAsync('userToken');
-      await api.delete(`/transactions/${deletingTxId}`, { 
-        headers: { Authorization: `Bearer ${token}` },
-        data: { delete_reason: deleteReason } 
-      });
-      
+      await api.delete(`/transactions/${deletingTxId}`, { headers: { Authorization: `Bearer ${token}` }, data: { delete_reason: deleteReason } });
       Alert.alert(t('common.success', "Success"), t('alerts.voidSuccess', "Transaction securely voided."));
       setDeleteModalVisible(false);
       fetchGroupData(); 
@@ -365,10 +345,7 @@ const GroupDetailsScreen = ({ route, navigation }) => {
         </Text>
       </View>
 
-      <ScrollView 
-        style={styles.content}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primaryBlue]} />}
-      >
+      <ScrollView style={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primaryBlue]} />}>
         <CorpusDashboardCard groupId={groupId} />
 
         <View style={styles.overviewCard}>
@@ -376,39 +353,31 @@ const GroupDetailsScreen = ({ route, navigation }) => {
             <Text style={styles.overviewLabel}>{t('groupDetails.monthlyRule', 'MONTHLY CONTRIBUTION RULE')}</Text>
             <Text style={styles.overviewValue}>₹{groupDetails?.monthly_contribution}</Text>
           </View>
-          {isAdmin && (
-            <View style={{ flexDirection: 'row', marginTop: 10, gap: 10 }}>
-              <View style={[styles.inviteBox, { flex: 1 }]}>
-                <Text style={styles.inviteLabel}>{t('groupDetails.inviteCode', 'Group Invite Code')}</Text>
-                <Text style={styles.inviteCode}>{groupDetails?.invite_code}</Text>
-              </View>
-              <TouchableOpacity style={styles.shareBtn} onPress={handleShareGroup}>
-                <Ionicons name="share-social" size={24} color={COLORS.primaryBlue} />
-                <Text style={styles.shareBtnText}>{t('groupDetails.shareBtn', 'SHARE')}</Text>
-              </TouchableOpacity>
+          
+          <View style={{ flexDirection: 'row', marginTop: 10, gap: 10 }}>
+            <View style={[styles.inviteBox, { flex: 1 }]}>
+              <Text style={styles.inviteLabel}>{t('groupDetails.inviteCode', 'Group Invite Code')}</Text>
+              <Text style={styles.inviteCode}>{groupDetails?.invite_code}</Text>
             </View>
-          )}
+            <TouchableOpacity style={styles.shareBtn} onPress={handleShareGroup}>
+              <Ionicons name="share-social" size={24} color={COLORS.primaryBlue} />
+              <Text style={styles.shareBtnText}>{t('groupDetails.shareBtn', 'SHARE')}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
-        <View style={styles.loanBanner}>
-          <TouchableOpacity 
-            style={styles.loanStat} 
-            onPress={() => navigation.navigate('LoanHub', { groupId: groupId, role: role, groupDetails: groupDetails })}
-          >
-            <Text style={styles.loanStatValue}>{activeLoansCount}</Text>
-            <Text style={styles.loanStatLabel}>{t('groupDetails.activeLoans', 'Active Loans')}</Text>
+        {isAdmin && (
+          <TouchableOpacity style={styles.reminderBanner} onPress={sendMeetingReminder}>
+            <View style={styles.reminderIconBox}>
+              <Ionicons name="logo-whatsapp" size={24} color="#25D366" />
+            </View>
+            <View style={{ flex: 1, marginLeft: 15 }}>
+              <Text style={styles.reminderTitle}>{t('groupDetails.sendReminder', 'Send Meeting Reminder')}</Text>
+              <Text style={styles.reminderSubtitle}>{t('groupDetails.sendReminderSub', 'Notify all members via WhatsApp')}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={COLORS.textMuted} />
           </TouchableOpacity>
-          
-          <View style={styles.loanDivider} />
-          
-          <TouchableOpacity 
-            style={styles.loanStat} 
-            onPress={() => navigation.navigate('LoanHub', { groupId: groupId, role: role, groupDetails: groupDetails })}
-          >
-            <Text style={[styles.loanStatValue, { color: COLORS.warning }]}>{pendingLoansCount}</Text>
-            <Text style={styles.loanStatLabel}>{t('groupDetails.pendingRequests', 'Pending Requests')}</Text>
-          </TouchableOpacity>
-        </View>
+        )}
 
         <View style={styles.actionGrid}>
           <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Members', { groupId: groupId, role: role, groupDetails: groupDetails })}>
@@ -456,23 +425,22 @@ const GroupDetailsScreen = ({ route, navigation }) => {
             const isUserAdmin = user.pivot.role === 'admin';
             const isCreator = groupDetails?.created_by === user.id; 
             return (
-              <TouchableOpacity 
-                key={user.id} 
-                style={[styles.memberCard, { flexDirection: 'column', alignItems: 'stretch' }]}
-                activeOpacity={isAdmin && !isCreator ? 0.6 : 1}
-                onPress={() => { if (isAdmin && !isCreator) openActionSheet(user); }}
-              >
+              <TouchableOpacity key={user.id} style={[styles.memberCard, { flexDirection: 'column', alignItems: 'stretch' }]} activeOpacity={isAdmin && !isCreator ? 0.6 : 1} onPress={() => { if (isAdmin && !isCreator) openActionSheet(user); }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <View style={styles.avatarCircle}><Text style={styles.avatarText}>{user.name.charAt(0).toUpperCase()}</Text></View>
+                  <View style={[styles.avatarCircle, { overflow: 'hidden' }]}>
+                    {user?.profile_photo_url ? (
+                      <Image source={{ uri: user.profile_photo_url + '?t=' + new Date().getTime() }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} />
+                    ) : (
+                      <Text style={styles.avatarText}>{user?.name ? user.name.charAt(0).toUpperCase() : 'U'}</Text>
+                    )}
+                  </View>
                   <View style={{ flex: 1, marginLeft: 15 }}>
                     <Text style={styles.memberName} numberOfLines={1} ellipsizeMode="tail">{user.name} {isCreator && '👑'}</Text>
                     <Text style={styles.memberRole}>{isUserAdmin ? `⭐ ${t('groupDetails.roleAdmin', 'Admin')}` : t('groupDetails.roleMember', 'Member')}</Text>
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
                     <View style={[styles.statusBadge, isPaid ? styles.badgePaid : styles.badgePending]}>
-                      <Text style={[styles.statusBadgeText, isPaid ? styles.textPaid : styles.textPending]}>
-                        {isPaid ? t('groupDetails.statusPaid', 'PAID') : t('groupDetails.statusPending', 'PENDING')}
-                      </Text>
+                      <Text style={[styles.statusBadgeText, isPaid ? styles.textPaid : styles.textPending]}>{isPaid ? t('groupDetails.statusPaid', 'PAID') : t('groupDetails.statusPending', 'PENDING')}</Text>
                     </View>
                     <Text style={styles.paidAmountText}>₹{user.current_month_paid} / ₹{groupDetails?.monthly_contribution}</Text>
                   </View>
@@ -489,34 +457,20 @@ const GroupDetailsScreen = ({ route, navigation }) => {
               recentTransactions.map((tx, index) => {
                 const isVoided = tx.category === 'voided';
                 const isEdited = tx.method && tx.method.includes('[Edited:');
-                
                 return (
                   <View key={index} style={[styles.transactionItem, isVoided && { backgroundColor: '#fff5f5' }]}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
                       <View style={[styles.txLeft, { flex: 1, marginRight: 10, overflow: 'hidden' }]}>
-                        <Text 
-                          style={[styles.txName, isVoided && { textDecorationLine: 'line-through', color: '#999' }]}
-                          numberOfLines={1}
-                          ellipsizeMode="tail"
-                        >
+                        <Text style={[styles.txName, isVoided && { textDecorationLine: 'line-through', color: '#999' }]} numberOfLines={1}>
                           {tx.user?.name || t('groupDetails.roleMember', 'Member')}
                         </Text>
-                        
-                        <Text 
-                          style={[styles.txDate, isVoided && {color: COLORS.danger, fontWeight: 'bold'}, isEdited && {color: COLORS.warning, fontStyle: 'italic'}]}
-                          numberOfLines={2}
-                        >
+                        <Text style={[styles.txDate, isVoided && {color: COLORS.danger, fontWeight: 'bold'}, isEdited && {color: COLORS.warning, fontStyle: 'italic'}]} numberOfLines={2}>
                           {formatTransactionMethod(tx.method)}
                         </Text>
-
-                        {/* --- NEW: WHATSAPP BUTTON UI --- */}
                         {!isVoided && (
-                          <TouchableOpacity 
-                            style={styles.whatsappBtn}
-                            onPress={() => sendWhatsAppReceipt(tx)}
-                          >
+                          <TouchableOpacity style={styles.whatsappBtn} onPress={() => sendWhatsAppReceipt(tx)}>
                             <Ionicons name="logo-whatsapp" size={14} color="#25D366" />
-                            <Text style={styles.whatsappBtnText}>Send Receipt</Text>
+                            <Text style={styles.whatsappBtnText}>{t('groupDetails.sendReceipt', 'Send Receipt')}</Text>
                           </TouchableOpacity>
                         )}
                       </View>
@@ -525,7 +479,6 @@ const GroupDetailsScreen = ({ route, navigation }) => {
                         <Text style={[styles.txAmount, { color: isVoided ? '#999' : (tx.type === 'deposit' ? COLORS.success : COLORS.danger) }, isVoided && { textDecorationLine: 'line-through' }]}>
                           {tx.type === 'deposit' ? '+' : '-'}₹{isVoided ? '0' : tx.amount}
                         </Text>
-
                         {tx.category === 'penalty' && <Text style={{fontSize: 10, color: COLORS.warning, fontWeight: 'bold', marginTop: 2}}>{t('groupDetails.fineTag', 'FINE')}</Text>}
                         {isVoided && <Text style={{fontSize: 10, color: COLORS.danger, fontWeight: 'bold', marginTop: 2}}>{t('dashboard.voidedTag', 'CANCELLED').toUpperCase()}</Text>}
                         
@@ -550,29 +503,29 @@ const GroupDetailsScreen = ({ route, navigation }) => {
           </View>
         </View>
 
+        {isAdmin && (
+           <TouchableOpacity style={{ backgroundColor: '#fff5f5', padding: 15, borderRadius: 12, alignItems: 'center', marginTop: 10, marginBottom: 20, borderWidth: 1, borderColor: '#ffe6e6' }} onPress={handleDeleteGroup}>
+            <Text style={{ color: COLORS.danger, fontWeight: 'bold' }}>{t('groupDetails.deleteGroupBtn', 'Delete This Group')}</Text>
+           </TouchableOpacity>
+        )}
         <View style={{ height: 40 }} />
       </ScrollView>
 
       <View style={{ padding: 15, backgroundColor: COLORS.bgWhite, borderTopWidth: 1, borderTopColor: COLORS.borderLight, flexDirection: 'row', gap: 10 }}>
-        <TouchableOpacity 
-          style={{ flex: 1, backgroundColor: COLORS.warning, flexDirection: 'row', padding: 15, borderRadius: 12, justifyContent: 'center', alignItems: 'center', elevation: 2 }}
-          onPress={() => navigation.navigate('LoanHub', { groupId: groupId, role: role, groupDetails: groupDetails })}
-        >
+        <TouchableOpacity style={{ flex: 1, backgroundColor: COLORS.warning, flexDirection: 'row', padding: 15, borderRadius: 12, justifyContent: 'center', alignItems: 'center', elevation: 2 }} onPress={() => navigation.navigate('LoanHub', { groupId: groupId, role: role, groupDetails: groupDetails })}>
           <Ionicons name="cash-outline" size={20} color={COLORS.bgWhite} style={{ marginRight: 6 }}/>
           <Text style={{ color: COLORS.bgWhite, fontSize: 14, fontWeight: 'bold' }}>{t('groupDetails.manageLoansBtn', 'Manage Loans')}</Text>
         </TouchableOpacity>
 
         {isAdmin && (
-          <TouchableOpacity 
-            style={{ flex: 1, backgroundColor: COLORS.primaryBlue, flexDirection: 'row', padding: 15, borderRadius: 12, justifyContent: 'center', alignItems: 'center', elevation: 2 }}
-            onPress={() => navigation.navigate('AddSavings', { groupId: groupId, members: members })}
-          >
+          <TouchableOpacity style={{ flex: 1, backgroundColor: COLORS.primaryBlue, flexDirection: 'row', padding: 15, borderRadius: 12, justifyContent: 'center', alignItems: 'center', elevation: 2 }} onPress={() => navigation.navigate('AddSavings', { groupId: groupId, members: members })}>
             <Ionicons name="add-circle" size={20} color={COLORS.bgWhite} style={{ marginRight: 6 }}/>
             <Text style={{ color: COLORS.bgWhite, fontSize: 14, fontWeight: 'bold' }}>{t('groupDetails.addSavingsBtn', 'Collect Savings')}</Text>
           </TouchableOpacity>
         )}
       </View>
 
+      {/* MODALS */}
       <Modal visible={actionSheetVisible} transparent={true} animationType="slide">
         <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={() => setActionSheetVisible(false)}>
           <View style={styles.actionSheet}>
@@ -609,22 +562,8 @@ const GroupDetailsScreen = ({ route, navigation }) => {
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t('groupDetails.chargeFineTitle', 'Add Fine / Penalty')}</Text>
             <Text style={{color: COLORS.textGray, marginBottom: 15}}>Charging <Text style={{fontWeight: 'bold', color: COLORS.textDark}}>{penaltyUser?.name}</Text></Text>
-            
-            <TextInput 
-              style={[styles.modalInput, { height: 50, fontSize: 18, fontWeight: 'bold' }]} 
-              keyboardType="numeric"
-              value={penaltyAmount}
-              onChangeText={setPenaltyAmount} 
-              placeholder={t('groupDetails.amountPlaceholder', 'Amount (e.g. ₹50)')} 
-            />
-            
-            <TextInput 
-              style={styles.modalInput} 
-              value={penaltyReason}
-              onChangeText={setPenaltyReason} 
-              placeholder={t('groupDetails.reasonPlaceholder', 'Reason (e.g. Late for meeting)')} 
-            />
-
+            <TextInput style={[styles.modalInput, { height: 50, fontSize: 18, fontWeight: 'bold' }]} keyboardType="numeric" value={penaltyAmount} onChangeText={setPenaltyAmount} placeholder={t('groupDetails.amountPlaceholder', 'Amount (e.g. ₹50)')} />
+            <TextInput style={styles.modalInput} value={penaltyReason} onChangeText={setPenaltyReason} placeholder={t('groupDetails.reasonPlaceholder', 'Reason (e.g. Late for meeting)')} />
             <View style={styles.modalActionRow}>
               <TouchableOpacity onPress={() => setPenaltyModalVisible(false)} style={{padding: 10}}><Text style={{color: COLORS.textDark}}>{t('common.cancel', 'Cancel')}</Text></TouchableOpacity>
               <TouchableOpacity onPress={handleChargePenalty} disabled={submittingPenalty} style={[styles.modalSubmitBtn, {backgroundColor: COLORS.warning}]}>
@@ -640,15 +579,7 @@ const GroupDetailsScreen = ({ route, navigation }) => {
           <View style={styles.modalContent}>
             <Text style={[styles.modalTitle, {color: COLORS.danger}]}>{t('alerts.voidPrompt', 'Void Transaction')}</Text>
             <Text style={{color: COLORS.textGray, marginBottom: 15}}>You are about to cancel this transaction. It will remain in the logs as 'Voided' for audit purposes.</Text>
-            
-            <TextInput 
-              style={[styles.modalInput, { height: 80, borderColor: COLORS.danger, borderWidth: 1 }]} 
-              value={deleteReason}
-              onChangeText={setDeleteReason} 
-              placeholder="Enter reason for voiding (Required)"
-              multiline 
-            />
-
+            <TextInput style={[styles.modalInput, { height: 80, borderColor: COLORS.danger, borderWidth: 1 }]} value={deleteReason} onChangeText={setDeleteReason} placeholder="Enter reason for voiding (Required)" multiline />
             <View style={styles.modalActionRow}>
               <TouchableOpacity onPress={() => setDeleteModalVisible(false)} style={{padding: 10}}><Text style={{color: COLORS.textDark}}>{t('common.cancel', 'Cancel')}</Text></TouchableOpacity>
               <TouchableOpacity onPress={confirmDeleteTransaction} disabled={submittingDelete} style={[styles.modalSubmitBtn, {backgroundColor: COLORS.danger}]}>
@@ -672,7 +603,6 @@ const styles = StyleSheet.create({
   content: { padding: 20 },
   
   loaderBox: { padding: 20, alignItems: 'center', justifyContent: 'center' },
-  
   analyticsCard: { backgroundColor: COLORS.bgWhite, borderRadius: 16, padding: 20, marginBottom: 15, elevation: 4, borderWidth: 1, borderColor: COLORS.borderLight, alignItems: 'center' },
   analyticsTitle: { fontSize: 16, fontWeight: 'bold', color: COLORS.textDark, alignSelf: 'flex-start', marginBottom: 20, textTransform: 'uppercase', letterSpacing: 1 },
   chartWrapper: { alignItems: 'center', justifyContent: 'center', height: 200, width: '100%', marginBottom: 10 },
@@ -693,11 +623,10 @@ const styles = StyleSheet.create({
   shareBtn: { backgroundColor: COLORS.bgWhite, borderRadius: 8, padding: 10, justifyContent: 'center', alignItems: 'center', flex: 0.3 },
   shareBtnText: { color: COLORS.primaryBlue, fontSize: 10, fontWeight: 'bold', marginTop: 2 },
 
-  loanBanner: { flexDirection: 'row', backgroundColor: COLORS.bgWhite, borderRadius: 12, padding: 15, marginBottom: 20, elevation: 1, alignItems: 'center' },
-  loanStat: { flex: 1, alignItems: 'center' },
-  loanStatValue: { fontSize: 22, fontWeight: 'bold', color: COLORS.primaryBlue },
-  loanStatLabel: { fontSize: 12, color: COLORS.textMuted, marginTop: 4, fontWeight: '600' },
-  loanDivider: { width: 1, height: 30, backgroundColor: COLORS.borderLight },
+  reminderBanner: { flexDirection: 'row', backgroundColor: '#E8F5E9', borderRadius: 12, padding: 15, marginBottom: 20, elevation: 1, alignItems: 'center', borderWidth: 1, borderColor: '#C8E6C9' },
+  reminderIconBox: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center' },
+  reminderTitle: { fontSize: 15, fontWeight: 'bold', color: '#128C7E' },
+  reminderSubtitle: { fontSize: 12, color: '#388E3C', marginTop: 2 },
 
   actionGrid: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: COLORS.bgWhite, padding: 15, borderRadius: 16, marginBottom: 15, elevation: 1 },
   actionButton: { alignItems: 'center', width: '30%' },
@@ -705,7 +634,6 @@ const styles = StyleSheet.create({
   actionText: { fontSize: 11, color: COLORS.textGray, fontWeight: 'bold', textAlign: 'center' },
 
   historyBtn: { backgroundColor: COLORS.primaryBlueLight, padding: 15, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 25, elevation: 1 },
-
   section: { marginBottom: 25 },
   sectionTitle: { fontSize: 18, fontWeight: 'bold', color: COLORS.textDark, marginBottom: 15 },
   
@@ -734,8 +662,6 @@ const styles = StyleSheet.create({
   txDate: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
   txAmount: { fontSize: 16, fontWeight: 'bold' },
   iconBtn: { padding: 6, backgroundColor: COLORS.primaryBlueLight, borderRadius: 6 },
-  
-  // --- NEW WHATSAPP BUTTON STYLE ---
   whatsappBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#E8F5E9', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginTop: 8, alignSelf: 'flex-start', borderWidth: 1, borderColor: '#C8E6C9' },
   whatsappBtnText: { marginLeft: 4, fontSize: 11, fontWeight: 'bold', color: '#128C7E' },
 

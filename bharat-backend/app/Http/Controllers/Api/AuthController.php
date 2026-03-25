@@ -212,7 +212,6 @@ class AuthController extends Controller
             $user = $request->user();
 
             // 1. Calculate True Personal Savings (All Groups)
-            // We check for both 'credit' and 'deposit' to support older test data
             $totalDeposits = Transaction::where('user_id', $user->id)->whereIn('type', ['credit', 'deposit'])->sum('amount');
             $totalWithdrawals = Transaction::where('user_id', $user->id)->where('type', 'withdrawal')->sum('amount');
             $trueSavings = $totalDeposits - $totalWithdrawals;
@@ -239,6 +238,7 @@ class AuthController extends Controller
             ], 500);
         }
     }
+
     public function updateProfile(Request $request)
     {
         try {
@@ -266,6 +266,7 @@ class AuthController extends Controller
             ], 500);
         }
     }
+
     public function uploadProfilePhoto(Request $request)
     {
         try {
@@ -274,7 +275,8 @@ class AuthController extends Controller
                 'profile_photo' => 'required|image|mimes:jpeg,png,jpg|max:5120', 
             ]);
 
-            $user = Auth::user();
+            // FIX: Use $request->user() instead of Auth::user()
+            $user = $request->user();
 
             if ($request->hasFile('profile_photo')) {
                 // 2. Save the file to the 'public/profile_photos' directory
@@ -300,6 +302,51 @@ class AuthController extends Controller
             return response()->json([
                 'status' => 'error', 
                 'message' => 'Failed to upload photo. ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    // --- NEW: SECURE PROFILE DELETION ---
+    public function deleteProfile(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            // 1. Check if user is an admin of ANY active group
+            $adminGroupsCount = $user->groups()->wherePivot('role', 'admin')->count();
+            if ($adminGroupsCount > 0) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'You cannot delete your account while you are a Group Admin. Please delete your groups or promote someone else first.'
+                ], 400);
+            }
+
+            // 2. Check if user has active/pending loans anywhere
+            // Assuming you have a Loan model (you may need to ensure App\Models\Loan is imported if used this way, 
+            // or just use the full namespace \App\Models\Loan::class)
+            $activeLoansCount = \App\Models\Loan::where('user_id', $user->id)
+                                    ->whereIn('status', ['pending', 'active', 'approved'])
+                                    ->count();
+
+            if ($activeLoansCount > 0) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'You cannot delete your account while you have active or pending loans.'
+                ], 400);
+            }
+
+            // 3. Everything is settled, safe to delete.
+            $user->delete();
+
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Account securely deleted.'
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error', 
+                'message' => 'Failed to delete account: ' . $e->getMessage()
             ], 500);
         }
     }

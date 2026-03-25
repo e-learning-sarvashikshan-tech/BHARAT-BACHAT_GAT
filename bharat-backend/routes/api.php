@@ -32,6 +32,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/user/profile/update', [AuthController::class, 'updateProfile']);
     Route::post('/user/ledger/export', [TransactionController::class, 'exportUserLedger']);
     Route::post('/user/profile/photo', [App\Http\Controllers\Api\AuthController::class, 'uploadProfilePhoto']);
+    Route::get('/user/all-loans', [App\Http\Controllers\Api\LoanController::class, 'getAllUserLoans']);
 
     // Group & Member Management 
     Route::post('/group/create', [GroupController::class, 'createGroup']);
@@ -44,6 +45,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/members/add', [GroupController::class, 'addMemberManually']);
     Route::get('/groups/{groupId}/history', [MeetingController::class, 'getHistory']);
     
+    // Account & Group Deletion Routes
+    Route::delete('/user/profile/delete', [App\Http\Controllers\Api\AuthController::class, 'deleteProfile']);
+    Route::delete('/group/{id}/delete', [App\Http\Controllers\Api\GroupController::class, 'deleteGroup']);
+
     // Financial Dashboard Route
     Route::get('/group/{groupId}/corpus', [GroupController::class, 'getCorpusStats']);
     
