@@ -52,8 +52,8 @@ class User extends Authenticatable
 
     public function groups()
     {
-        return $this->belongsToMany(Group::class, 'group_user')
-                    ->withPivot('role', 'status') // Fetch their role/status for this specific group
+        return $this->belongsToMany(Group::class, 'group_members')
+                    ->withPivot('role') // Fetch their role/status for this specific group
                     ->withTimestamps();
     }
 

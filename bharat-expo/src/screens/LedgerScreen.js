@@ -7,11 +7,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import * as SecureStore from 'expo-secure-store';
-import * as Print from 'expo-print'; 
-import * as Sharing from 'expo-sharing'; 
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import api from '../services/api';
 import { COLORS } from '../constants/theme';
+import { Asset } from 'expo-asset';
 
 const LedgerScreen = ({ route, navigation }) => {
   const { t } = useTranslation();
@@ -21,12 +22,12 @@ const LedgerScreen = ({ route, navigation }) => {
   const [loading, setLoading] = useState(true);
   const [groupBalance, setGroupBalance] = useState(0);
   const [groupName, setGroupName] = useState('');
-  
+
   const [exportModalVisible, setExportModalVisible] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false); 
-  const [startDate, setStartDate] = useState(new Date(new Date().setMonth(new Date().getMonth() - 1))); 
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [startDate, setStartDate] = useState(new Date(new Date().setMonth(new Date().getMonth() - 1)));
   const [endDate, setEndDate] = useState(new Date());
-  const [datePickerTarget, setDatePickerTarget] = useState(null); 
+  const [datePickerTarget, setDatePickerTarget] = useState(null);
 
   const fetchPassbook = async () => {
     if (!groupId) {
@@ -37,18 +38,18 @@ const LedgerScreen = ({ route, navigation }) => {
 
     try {
       const token = await SecureStore.getItemAsync('userToken');
-      
+
       const groupResponse = await api.get(`/group/${groupId}`, { headers: { Authorization: `Bearer ${token}` } });
       setGroupBalance(groupResponse.data.group_balance || 0);
       setGroupName(groupResponse.data.group?.name || 'Bachat Gat');
 
       const exportResponse = await api.post(`/group/${groupId}/ledger/export`, {
-        start_date: '2000-01-01', 
+        start_date: '2000-01-01',
         end_date: new Date().toISOString().split('T')[0]
       }, { headers: { Authorization: `Bearer ${token}` } });
 
       setTransactions(exportResponse.data.transactions || []);
-      
+
     } catch (error) {
       console.error("Fetch Passbook Error:", error);
       Alert.alert(t('common.error', "Error"), t('ledger.fetchError', "Could not load the group passbook."));
@@ -60,7 +61,7 @@ const LedgerScreen = ({ route, navigation }) => {
   useFocusEffect(useCallback(() => { fetchPassbook(); }, [groupId]));
 
   const handleDateChange = (event, selectedDate) => {
-    if (Platform.OS === 'android') setDatePickerTarget(null); 
+    if (Platform.OS === 'android') setDatePickerTarget(null);
     if (selectedDate) {
       if (datePickerTarget === 'start') setStartDate(selectedDate);
       if (datePickerTarget === 'end') setEndDate(selectedDate);
@@ -76,7 +77,7 @@ const LedgerScreen = ({ route, navigation }) => {
     setIsGenerating(true);
     try {
       const token = await SecureStore.getItemAsync('userToken');
-      
+
       const response = await api.post(`/group/${groupId}/ledger/export`, {
         start_date: startDate.toISOString().split('T')[0],
         end_date: endDate.toISOString().split('T')[0]
@@ -85,9 +86,9 @@ const LedgerScreen = ({ route, navigation }) => {
       const filteredTransactions = response.data.transactions;
 
       if (filteredTransactions.length === 0) {
-          Alert.alert(t('common.warning', "No Data"), "There are no transactions recorded in this date range.");
-          setIsGenerating(false);
-          return;
+        Alert.alert(t('common.warning', "No Data"), "There are no transactions recorded in this date range.");
+        setIsGenerating(false);
+        return;
       }
 
       let tableRows = '';
@@ -95,14 +96,14 @@ const LedgerScreen = ({ route, navigation }) => {
       let totalWithdrawn = 0;
 
       filteredTransactions.forEach((tx) => {
-          const date = new Date(tx.transaction_date).toLocaleDateString();
-          const typeColor = tx.type === 'deposit' ? COLORS.success : COLORS.danger;
-          const sign = tx.type === 'deposit' ? '+' : '-';
-          
-          if (tx.type === 'deposit' && tx.category !== 'voided') totalDeposited += parseFloat(tx.amount);
-          if (tx.type === 'withdrawal' && tx.category !== 'voided') totalWithdrawn += parseFloat(tx.amount);
+        const date = new Date(tx.transaction_date).toLocaleDateString();
+        const typeColor = tx.type === 'deposit' ? COLORS.success : COLORS.danger;
+        const sign = tx.type === 'deposit' ? '+' : '-';
 
-          tableRows += `
+        if (tx.type === 'deposit' && tx.category !== 'voided') totalDeposited += parseFloat(tx.amount);
+        if (tx.type === 'withdrawal' && tx.category !== 'voided') totalWithdrawn += parseFloat(tx.amount);
+
+        tableRows += `
             <tr>
               <td>${date}</td>
               <td>${tx.user?.name || 'Member'}</td>
@@ -112,15 +113,27 @@ const LedgerScreen = ({ route, navigation }) => {
           `;
       });
 
-      // --- UPGRADED: PREMIUM PDF HTML TEMPLATE ---
+      // --- MOVED INSIDE THE FUNCTION TO PREVENT CRASHING ---
+      let base64Logo = '';
+      try {
+        const asset = Asset.fromModule(require('../../assets/logo.png'));
+        await asset.downloadAsync();
+        const fileString = await FileSystem.readAsStringAsync(asset.localUri, { encoding: FileSystem.EncodingType.Base64 });
+        base64Logo = `data:image/png;base64,${fileString}`;
+      } catch (e) {
+        console.log("Could not load local logo for PDF.");
+      }
+
+      // --- THE FIX: REMOVED REDUNDANT TEXT LOGO, ADDED SARVASHIKSHAN ---
       const htmlContent = `
         <html>
           <head>
             <style>
               body { font-family: 'Courier New', Courier, monospace; padding: 40px; color: #333; background-color: #fdfbf7; }
               .header { text-align: center; border-bottom: 2px solid #d1c7a3; padding-bottom: 20px; margin-bottom: 30px; }
-              .logo { font-size: 32px; font-weight: 900; color: ${COLORS.primaryBlue}; margin: 0; text-transform: uppercase; }
-              .sub-logo { font-size: 14px; font-weight: bold; color: #5c5442; margin-top: 5px; letter-spacing: 2px; }
+              .logo-img { height: 80px; margin-bottom: 5px; } 
+              .powered-by { font-size: 11px; color: #777; font-weight: bold; letter-spacing: 1px; margin-top: 0px; margin-bottom: 15px; text-transform: uppercase; }
+              .sub-logo { font-size: 14px; font-weight: bold; color: #5c5442; margin-top: 15px; letter-spacing: 2px; }
               .summary-box { background-color: #efeadd; padding: 20px; border-radius: 8px; margin-bottom: 30px; display: flex; justify-content: space-between; border: 1px solid #d1c7a3; }
               .summary-item { text-align: center; }
               .summary-title { font-size: 12px; color: #5c5442; text-transform: uppercase; font-weight: bold; margin: 0; }
@@ -134,7 +147,8 @@ const LedgerScreen = ({ route, navigation }) => {
           </head>
           <body>
             <div class="header">
-              <p class="logo">Bharat Bachat</p>
+              ${base64Logo ? `<img src="${base64Logo}" class="logo-img" alt="Bharat Bachat Logo" />` : ''}
+              <p class="powered-by">Powered By SarvaShikshan</p>
               <p class="sub-logo">OFFICIAL GROUP PASSBOOK</p>
               <p style="font-size: 14px; color: #5c5442; margin-top: 10px;">Period: ${startDate.toDateString()} to ${endDate.toDateString()}</p>
             </div>
@@ -162,7 +176,7 @@ const LedgerScreen = ({ route, navigation }) => {
       `;
 
       const { uri } = await Print.printToFileAsync({ html: htmlContent });
-      
+
       if (Platform.OS === 'android') {
         try {
           const permissions = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
@@ -194,14 +208,14 @@ const LedgerScreen = ({ route, navigation }) => {
   };
 
   let runningBalance = 0;
-  const sortedTx = [...transactions].sort((a,b) => new Date(a.transaction_date) - new Date(b.transaction_date));
+  const sortedTx = [...transactions].sort((a, b) => new Date(a.transaction_date) - new Date(b.transaction_date));
   const ledgerRows = sortedTx.map((tx) => {
     if (tx.category !== 'voided') {
-        if (tx.type === 'deposit') runningBalance += parseFloat(tx.amount);
-        if (tx.type === 'withdrawal') runningBalance -= parseFloat(tx.amount);
+      if (tx.type === 'deposit') runningBalance += parseFloat(tx.amount);
+      if (tx.type === 'withdrawal') runningBalance -= parseFloat(tx.amount);
     }
     return { ...tx, runningBalance: runningBalance };
-  }).reverse(); 
+  }).reverse();
 
   if (loading) return <View style={styles.centered}><ActivityIndicator size="large" color={COLORS.primaryBlue} /></View>;
 
@@ -220,64 +234,64 @@ const LedgerScreen = ({ route, navigation }) => {
       <ScrollView showsVerticalScrollIndicator={false} style={styles.content}>
         <View style={styles.passbookCover}>
           <View style={styles.coverHeader}>
-              <Text style={styles.bankName}>Bharat Bachat Ledger</Text>
-              <Text style={styles.accountType}>{t('ledger.officialPassbook', 'OFFICIAL PASSBOOK')}</Text>
+            <Text style={styles.bankName}>Bharat Bachat Ledger</Text>
+            <Text style={styles.accountType}>{t('ledger.officialPassbook', 'OFFICIAL PASSBOOK')}</Text>
           </View>
           <View style={styles.coverDetails}>
-              <Text style={styles.coverLabel}>{t('groupDetails.gatName', 'Bachat Gat Name:')}</Text>
-              <Text style={styles.coverValue}>{groupName}</Text>
-              <Text style={[styles.coverLabel, {marginTop: 15}]}>{t('ledger.liveCorpus', 'Live Group Corpus:')}</Text>
-              <Text style={[styles.coverValue, {fontSize: 32, color: '#a7f3d0'}]}>₹{groupBalance.toLocaleString()}</Text>
+            <Text style={styles.coverLabel}>{t('groupDetails.gatName', 'Bachat Gat Name:')}</Text>
+            <Text style={styles.coverValue}>{groupName}</Text>
+            <Text style={[styles.coverLabel, { marginTop: 15 }]}>{t('ledger.liveCorpus', 'Live Group Corpus:')}</Text>
+            <Text style={[styles.coverValue, { fontSize: 32, color: '#a7f3d0' }]}>₹{groupBalance.toLocaleString()}</Text>
           </View>
         </View>
 
         <TouchableOpacity style={styles.downloadBtn} onPress={() => setExportModalVisible(true)}>
-          <Ionicons name="filter-circle-outline" size={18} color={COLORS.primaryBlue} style={{marginRight: 6}} />
+          <Ionicons name="filter-circle-outline" size={18} color={COLORS.primaryBlue} style={{ marginRight: 6 }} />
           <Text style={styles.downloadBtnText}>{t('ledger.exportCustom', 'Export Custom PDF Statement')}</Text>
         </TouchableOpacity>
 
         <View style={styles.paperTable}>
-            <View style={styles.tableHeaderRow}>
-                <Text style={[styles.tableHeaderCell, { flex: 1.5 }]}>{t('ledger.date', 'Date')}</Text>
-                <Text style={[styles.tableHeaderCell, { flex: 2 }]}>{t('ledger.particulars', 'Particulars')}</Text>
-                <Text style={[styles.tableHeaderCell, { flex: 1.2, textAlign: 'right' }]}>{t('ledger.in', 'In (+)')}</Text>
-                <Text style={[styles.tableHeaderCell, { flex: 1.2, textAlign: 'right' }]}>{t('ledger.out', 'Out (-)')}</Text>
-                <Text style={[styles.tableHeaderCell, { flex: 1.5, textAlign: 'right' }]}>{t('ledger.bal', 'Bal')}</Text>
+          <View style={styles.tableHeaderRow}>
+            <Text style={[styles.tableHeaderCell, { flex: 1.5 }]}>{t('ledger.date', 'Date')}</Text>
+            <Text style={[styles.tableHeaderCell, { flex: 2 }]}>{t('ledger.particulars', 'Particulars')}</Text>
+            <Text style={[styles.tableHeaderCell, { flex: 1.2, textAlign: 'right' }]}>{t('ledger.in', 'In (+)')}</Text>
+            <Text style={[styles.tableHeaderCell, { flex: 1.2, textAlign: 'right' }]}>{t('ledger.out', 'Out (-)')}</Text>
+            <Text style={[styles.tableHeaderCell, { flex: 1.5, textAlign: 'right' }]}>{t('ledger.bal', 'Bal')}</Text>
+          </View>
+
+          {ledgerRows.length > 0 ? ledgerRows.map((tx, index) => {
+            const isVoided = tx.category === 'voided';
+            const dateObj = new Date(tx.transaction_date);
+            const dateString = `${dateObj.getDate().toString().padStart(2, '0')}/${(dateObj.getMonth() + 1).toString().padStart(2, '0')}/${dateObj.getFullYear().toString().slice(-2)}`;
+            let particulars = tx.user?.name || tx.method || 'Record';
+            if (particulars.length > 10) particulars = particulars.substring(0, 9) + '..';
+
+            return (
+              <View key={index} style={[styles.tableRow, isVoided && { backgroundColor: '#fff5f5' }]}>
+                <Text style={[styles.tableCell, { flex: 1.5 }, isVoided && styles.voidedText]}>{dateString}</Text>
+                <Text style={[styles.tableCell, { flex: 2 }, isVoided && styles.voidedText]} numberOfLines={1}>{isVoided ? 'CANCEL' : particulars}</Text>
+                <Text style={[styles.tableCell, { flex: 1.2, textAlign: 'right', color: COLORS.success }, isVoided && styles.voidedText]}>{tx.type === 'deposit' ? `${tx.amount}` : '-'}</Text>
+                <Text style={[styles.tableCell, { flex: 1.2, textAlign: 'right', color: COLORS.danger }, isVoided && styles.voidedText]}>{tx.type === 'withdrawal' ? `${tx.amount}` : '-'}</Text>
+                <Text style={[styles.tableCell, { flex: 1.5, textAlign: 'right', fontWeight: 'bold' }, isVoided && styles.voidedText]}>₹{tx.runningBalance}</Text>
+              </View>
+            );
+          }) : (
+            <View style={{ padding: 30, alignItems: 'center' }}><Text style={{ color: COLORS.textMuted, fontStyle: 'italic' }}>{t('ledger.noRecords', 'No records found in passbook.')}</Text></View>
+          )}
+
+          {ledgerRows.length > 0 && (
+            <View style={styles.stampContainer}>
+              <View style={styles.stampRing}>
+                <Ionicons name="checkmark-done-circle" size={32} color="#16a34a" />
+                <Text style={styles.stampText}>{t('ledger.digitallyVerified', 'DIGITALLY').split(' ')[0]}</Text>
+                <Text style={styles.stampText}>{t('ledger.digitallyVerified', 'VERIFIED').split(' ')[1] || 'VERIFIED'}</Text>
+              </View>
             </View>
-
-            {ledgerRows.length > 0 ? ledgerRows.map((tx, index) => {
-                const isVoided = tx.category === 'voided';
-                const dateObj = new Date(tx.transaction_date);
-                const dateString = `${dateObj.getDate().toString().padStart(2, '0')}/${(dateObj.getMonth()+1).toString().padStart(2, '0')}/${dateObj.getFullYear().toString().slice(-2)}`;
-                let particulars = tx.user?.name || tx.method || 'Record';
-                if (particulars.length > 10) particulars = particulars.substring(0, 9) + '..';
-
-                return (
-                    <View key={index} style={[styles.tableRow, isVoided && { backgroundColor: '#fff5f5' }]}>
-                        <Text style={[styles.tableCell, { flex: 1.5 }, isVoided && styles.voidedText]}>{dateString}</Text>
-                        <Text style={[styles.tableCell, { flex: 2 }, isVoided && styles.voidedText]} numberOfLines={1}>{isVoided ? 'CANCEL' : particulars}</Text>
-                        <Text style={[styles.tableCell, { flex: 1.2, textAlign: 'right', color: COLORS.success }, isVoided && styles.voidedText]}>{tx.type === 'deposit' ? `${tx.amount}` : '-'}</Text>
-                        <Text style={[styles.tableCell, { flex: 1.2, textAlign: 'right', color: COLORS.danger }, isVoided && styles.voidedText]}>{tx.type === 'withdrawal' ? `${tx.amount}` : '-'}</Text>
-                        <Text style={[styles.tableCell, { flex: 1.5, textAlign: 'right', fontWeight: 'bold' }, isVoided && styles.voidedText]}>₹{tx.runningBalance}</Text>
-                    </View>
-                );
-            }) : (
-                <View style={{ padding: 30, alignItems: 'center' }}><Text style={{ color: COLORS.textMuted, fontStyle: 'italic' }}>{t('ledger.noRecords', 'No records found in passbook.')}</Text></View>
-            )}
-
-            {ledgerRows.length > 0 && (
-                <View style={styles.stampContainer}>
-                    <View style={styles.stampRing}>
-                        <Ionicons name="checkmark-done-circle" size={32} color="#16a34a" />
-                        <Text style={styles.stampText}>{t('ledger.digitallyVerified', 'DIGITALLY').split(' ')[0]}</Text>
-                        <Text style={styles.stampText}>{t('ledger.digitallyVerified', 'VERIFIED').split(' ')[1] || 'VERIFIED'}</Text>
-                    </View>
-                </View>
-            )}
+          )}
         </View>
 
         <Text style={styles.securityNote}>
-            <Ionicons name="lock-closed" size={12} /> {t('ledger.securityNote', 'This digital passbook is cryptographically secured and matches the records held by your Gat Pramukh.')}
+          <Ionicons name="lock-closed" size={12} /> {t('ledger.securityNote', 'This digital passbook is cryptographically secured and matches the records held by your Gat Pramukh.')}
         </Text>
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -289,31 +303,31 @@ const LedgerScreen = ({ route, navigation }) => {
               <Text style={styles.modalTitle}>{t('exportLedger.modalTitle', 'Download Statement')}</Text>
               <TouchableOpacity onPress={() => setExportModalVisible(false)}><Ionicons name="close" size={24} color={COLORS.textDark} /></TouchableOpacity>
             </View>
-            <Text style={{color: COLORS.textGray, marginBottom: 20}}>{t('exportLedger.modalDesc', "Select a date range to filter and download the group's financial records.")}</Text>
+            <Text style={{ color: COLORS.textGray, marginBottom: 20 }}>{t('exportLedger.modalDesc', "Select a date range to filter and download the group's financial records.")}</Text>
 
             <Text style={styles.dateLabel}>{t('exportLedger.startDate', 'Start Date')}</Text>
             <TouchableOpacity style={styles.dateInput} onPress={() => setDatePickerTarget('start')}>
-              <Ionicons name="calendar-outline" size={20} color={COLORS.primaryBlue} style={{marginRight: 10}} />
+              <Ionicons name="calendar-outline" size={20} color={COLORS.primaryBlue} style={{ marginRight: 10 }} />
               <Text style={styles.dateText}>{startDate.toDateString()}</Text>
             </TouchableOpacity>
 
             <Text style={styles.dateLabel}>{t('exportLedger.endDate', 'End Date')}</Text>
             <TouchableOpacity style={styles.dateInput} onPress={() => setDatePickerTarget('end')}>
-              <Ionicons name="calendar-outline" size={20} color={COLORS.primaryBlue} style={{marginRight: 10}} />
+              <Ionicons name="calendar-outline" size={20} color={COLORS.primaryBlue} style={{ marginRight: 10 }} />
               <Text style={styles.dateText}>{endDate.toDateString()}</Text>
             </TouchableOpacity>
 
             {datePickerTarget && (
               <DateTimePicker value={datePickerTarget === 'start' ? startDate : endDate} mode="date" display={Platform.OS === 'ios' ? 'spinner' : 'default'} onChange={handleDateChange} maximumDate={new Date()} />
             )}
-            
+
             {Platform.OS === 'ios' && datePickerTarget && (
-              <TouchableOpacity style={styles.doneBtn} onPress={() => setDatePickerTarget(null)}><Text style={{color: COLORS.primaryBlue, fontWeight: 'bold'}}>{t('exportLedger.done', 'Done')}</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.doneBtn} onPress={() => setDatePickerTarget(null)}><Text style={{ color: COLORS.primaryBlue, fontWeight: 'bold' }}>{t('exportLedger.done', 'Done')}</Text></TouchableOpacity>
             )}
 
             <TouchableOpacity style={[styles.generateBtn, isGenerating && { opacity: 0.7 }]} onPress={generateFilteredPassbookPDF} disabled={isGenerating}>
               {isGenerating ? <ActivityIndicator color={COLORS.bgWhite} /> : (
-                <><Ionicons name="download" size={20} color={COLORS.bgWhite} style={{marginRight: 8}} /><Text style={styles.generateBtnText}>{t('exportLedger.generateBtn', 'Generate PDF')}</Text></>
+                <><Ionicons name="download" size={20} color={COLORS.bgWhite} style={{ marginRight: 8 }} /><Text style={styles.generateBtnText}>{t('exportLedger.generateBtn', 'Generate PDF')}</Text></>
               )}
             </TouchableOpacity>
           </View>
@@ -328,7 +342,7 @@ const styles = StyleSheet.create({
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, paddingTop: 10, backgroundColor: COLORS.primaryBlue, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.1)' },
   backButton: { paddingRight: 15 },
-  headerTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.bgWhite, flex: 1 }, 
+  headerTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.bgWhite, flex: 1 },
   content: { padding: 15 },
 
   passbookCover: { backgroundColor: COLORS.primaryBlue, borderRadius: 12, padding: 20, marginBottom: 15, elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5 },
@@ -346,7 +360,7 @@ const styles = StyleSheet.create({
   tableHeaderRow: { flexDirection: 'row', backgroundColor: '#efeadd', paddingVertical: 12, paddingHorizontal: 10, borderBottomWidth: 2, borderBottomColor: '#d1c7a3' },
   tableHeaderCell: { fontSize: 11, fontWeight: 'bold', color: '#5c5442', textTransform: 'uppercase' },
   tableRow: { flexDirection: 'row', paddingVertical: 14, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: '#e8e4d3' },
-  tableCell: { fontSize: 13, color: '#333', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' }, 
+  tableCell: { fontSize: 13, color: '#333', fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace' },
   voidedText: { textDecorationLine: 'line-through', color: '#999' },
 
   stampContainer: { padding: 30, alignItems: 'flex-end', justifyContent: 'center' },

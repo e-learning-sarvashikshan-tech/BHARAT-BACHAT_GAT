@@ -12,7 +12,8 @@ import {
   Platform,
   TextInput,
   KeyboardAvoidingView,
-  Image
+  Image,
+  Linking // <-- NEEDED FOR EMAIL
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -24,6 +25,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Print from 'expo-print';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
+import { Asset } from 'expo-asset'; // <-- NEW: NEEDED FOR LOCAL PDF IMAGES
 import api from '../services/api';
 import { COLORS } from '../constants/theme';
 
@@ -192,15 +194,27 @@ const ProfileScreen = ({ navigation }) => {
           `;
       });
 
-      // --- UPGRADED: PREMIUM PDF HTML TEMPLATE ---
+      // --- NEW: FETCH LOCAL LOGO AND CONVERT TO BASE64 FOR PDF ---
+      let base64Logo = '';
+      try {
+        const asset = Asset.fromModule(require('../../assets/logo.png'));
+        await asset.downloadAsync();
+        const fileString = await FileSystem.readAsStringAsync(asset.localUri, { encoding: FileSystem.EncodingType.Base64 });
+        base64Logo = `data:image/png;base64,${fileString}`;
+      } catch (e) {
+        console.log("Could not load local logo for PDF.");
+      }
+
       const htmlContent = `
         <html>
           <head>
             <style>
               body { font-family: 'Courier New', Courier, monospace; padding: 40px; color: #333; background-color: #fdfbf7; }
               .header { text-align: center; border-bottom: 2px solid #d1c7a3; padding-bottom: 20px; margin-bottom: 30px; }
+              .logo-img { height: 60px; margin-bottom: 10px; } 
               .logo { font-size: 32px; font-weight: 900; color: ${COLORS.primaryBlue}; margin: 0; text-transform: uppercase; }
-              .sub-logo { font-size: 14px; font-weight: bold; color: #5c5442; margin-top: 5px; letter-spacing: 2px; }
+              .powered-by { font-size: 10px; color: #777; font-weight: bold; letter-spacing: 1px; margin-top: 2px; margin-bottom: 10px; text-transform: uppercase; }
+              .sub-logo { font-size: 14px; font-weight: bold; color: #5c5442; margin-top: 15px; letter-spacing: 2px; }
               .user-details { text-align: center; font-size: 18px; font-weight: bold; color: #333; margin-top: 10px; }
               .summary-box { background-color: #efeadd; padding: 20px; border-radius: 8px; margin-bottom: 30px; display: flex; justify-content: space-between; border: 1px solid #d1c7a3; }
               .summary-item { text-align: center; }
@@ -215,7 +229,9 @@ const ProfileScreen = ({ navigation }) => {
           </head>
           <body>
             <div class="header">
+              ${base64Logo ? `<img src="${base64Logo}" class="logo-img" alt="Bharat Bachat Logo" />` : ''}
               <p class="logo">Bharat Bachat</p>
+              <p class="powered-by">Powered By SarvaShikshan</p>
               <p class="sub-logo">PERSONAL CONSOLIDATED STATEMENT</p>
               <p class="user-details">${userData?.name || 'Member'} (${userData?.phone || ''})</p>
               <p style="font-size: 14px; color: #5c5442; margin-top: 10px;">Period: ${startDate.toDateString()} to ${endDate.toDateString()}</p>
@@ -564,11 +580,22 @@ const ProfileScreen = ({ navigation }) => {
               <TouchableOpacity onPress={() => setHelpModalVisible(false)}><Ionicons name="close" size={24} color={COLORS.textDark} /></TouchableOpacity>
             </View>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+              
+              {/* --- UPDATED: HELP & SUPPORT MODAL WITH EMAIL AND BRANDING --- */}
               <View style={styles.aboutCard}>
-                <Ionicons name="information-circle" size={24} color="#0284c7" style={{ marginBottom: 10 }} />
+                <Ionicons name="information-circle" size={24} color="#0284c7" style={{marginBottom: 10}} />
                 <Text style={styles.helpText}>{t('about.p1', 'Bharat Bachat is a secure digital ledger designed specifically for Self-Help Groups (Bachat Gats).')}</Text>
                 <Text style={styles.helpText}>{t('about.p2', 'Our mission is to replace easily-lost paper passbooks with a fully transparent, offline-capable mobile application.')}</Text>
+                
+                <View style={{ marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#bae6fd' }}>
+                  <Text style={{ fontSize: 13, color: '#0369a1', fontWeight: 'bold' }}>{t('about.supportEmail', 'For any other queries, reach out to us at:')}</Text>
+                  <TouchableOpacity onPress={() => Linking.openURL('mailto:bharatbachat@sarvashikshan.com')} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 5 }}>
+                    <Ionicons name="mail" size={16} color={COLORS.primaryBlue} style={{ marginRight: 6 }} />
+                    <Text style={{ fontSize: 15, color: COLORS.primaryBlue, fontWeight: 'bold', textDecorationLine: 'underline' }}>{t('about.emailAddress', 'bharatbachat@sarvashikshan.com')}</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
+
               <Text style={styles.faqCategoryTitle}>{t('faq.catGroups', '🏢 Group Management')}</Text>
               {renderFaqItem('q1', 'faq.q1', 'faq.a1')}
               {renderFaqItem('q2', 'faq.q2', 'faq.a2')}
