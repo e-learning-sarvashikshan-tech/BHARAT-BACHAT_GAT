@@ -14,6 +14,32 @@ use App\Mail\OtpMail;
 
 class AuthController extends Controller
 {
+    // 0. STANDALONE REGISTER
+    public function register(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users',
+            'phone' => 'required|digits:10|unique:users',
+            'password' => 'required|string|min:6',
+        ]);
+
+        $user = User::create([
+            'name' => $request->name,
+            'email' => $request->email,
+            'phone' => $request->phone,
+            'password' => Hash::make($request->password),
+        ]);
+
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        return response()->json([
+            'message' => 'Registration successful',
+            'access_token' => $token,
+            'user' => $user
+        ], 201);
+    }
+    
     // 1. Send OTP
     public function sendOtp(Request $request)
     {

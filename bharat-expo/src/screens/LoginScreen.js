@@ -40,6 +40,9 @@ const LoginScreen = ({ navigation }) => {
   const [phone, setPhone] = useState('');
   
   const [isRegistering, setIsRegistering] = useState(false); 
+  const [isRegisterOtpStep, setIsRegisterOtpStep] = useState(false); // NEW: Tracks if we are waiting for Registration OTP
+  const [registerOtp, setRegisterOtp] = useState(''); // NEW: Holds the Registration OTP
+  
   const [language, setLanguage] = useState(i18n.language || 'en'); 
   const [loading, setLoading] = useState(false);
   const [isCheckingBiometrics, setIsCheckingBiometrics] = useState(true);
@@ -47,7 +50,7 @@ const LoginScreen = ({ navigation }) => {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
 
   // --- FORGOT PASSWORD STATES ---
-  const [forgotPasswordStep, setForgotPasswordStep] = useState(0); // 0: Hidden, 1: Enter Email, 2: Enter OTP & New Password
+  const [forgotPasswordStep, setForgotPasswordStep] = useState(0); 
   const [resetOtp, setResetOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [supportModalVisible, setSupportModalVisible] = useState(false);
@@ -98,38 +101,90 @@ const LoginScreen = ({ navigation }) => {
     }
 
     let newErrors = {};
-    if (!email) newErrors.email = t('errors.invalidEmail', "Please enter a valid email address.");
-    if (!password) newErrors.password = t('errors.emptyPassword', "Please enter your password.");
-    
+
     if (isRegistering) {
+      if (!isRegisterOtpStep) {
+        // --- REGISTRATION STEP 1: Send Details to generate OTP ---
+        if (!email) newErrors.email = t('errors.invalidEmail', "Please enter a valid email address.");
+        if (!password) newErrors.password = t('errors.emptyPassword', "Please enter your password.");
         if (!name) newErrors.name = t('errors.emptyName', "Please enter the full name.");
         if (!phone || phone.length !== 10) newErrors.phone = t('errors.invalidPhone', "Please enter a valid 10-digit mobile number.");
         if (password.length < 6) newErrors.password = t('errors.shortPassword', "Password must be at least 6 characters long.");
-    }
 
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      return; 
-    }
+        if (Object.keys(newErrors).length > 0) {
+          setErrors(newErrors);
+          return; 
+        }
 
-    setLoading(true);
-    setErrors({}); 
-    
-    try {
-      const endpoint = isRegistering ? '/register' : '/login-password';
-      const payload = isRegistering 
-        ? { name, email: email.trim().toLowerCase(), phone, password, language } 
-        : { email: email.trim().toLowerCase(), password };
+        setLoading(true);
+        setErrors({}); 
+        
+        try {
+          // Hits the existing send-otp route which creates the user and triggers the email
+          await api.post('/send-otp', { 
+            name, 
+            email: email.trim().toLowerCase(), 
+            phone, 
+            password 
+          });
+          
+          setIsRegisterOtpStep(true);
+          Alert.alert("OTP Sent", "Please check your email for the verification code.");
+        } catch (error) {
+          const errorMsg = error.response?.data?.message || t('authAlerts.loginFailed', "Registration failed or email already exists.");
+          Alert.alert(t('common.error', "Error"), errorMsg);
+        } finally {
+          setLoading(false);
+        }
+      } else {
+        // --- REGISTRATION STEP 2: Verify OTP and Login ---
+        if (registerOtp.length !== 4) {
+          return setErrors({ registerOtp: "Please enter a valid 4-digit OTP." });
+        }
 
-      const response = await api.post(endpoint, payload);
+        setLoading(true);
+        setErrors({});
+        try {
+          const response = await api.post('/verify-otp', {
+            email: email.trim().toLowerCase(),
+            otp: Number(registerOtp),
+            language
+          });
+          
+          await SecureStore.setItemAsync('userToken', response.data.access_token);
+          navigation.replace('MainTabs');
+        } catch (error) {
+          Alert.alert(t('common.error', "Error"), error.response?.data?.message || "Invalid OTP. Please try again.");
+        } finally {
+          setLoading(false);
+        }
+      }
+    } else {
+      // --- STANDARD LOGIN FLOW ---
+      if (!email) newErrors.email = t('errors.invalidEmail', "Please enter a valid email address.");
+      if (!password) newErrors.password = t('errors.emptyPassword', "Please enter your password.");
       
-      await SecureStore.setItemAsync('userToken', response.data.access_token);
-      navigation.replace('MainTabs');
-    } catch (error) {
-      const errorMsg = error.response?.data?.message || t('authAlerts.loginFailed', "Invalid credentials or email already exists.");
-      Alert.alert(t('common.error', "Error"), errorMsg);
-    } finally {
-      setLoading(false);
+      if (Object.keys(newErrors).length > 0) {
+        setErrors(newErrors);
+        return; 
+      }
+
+      setLoading(true);
+      setErrors({}); 
+      try {
+        const response = await api.post('/login-password', { 
+          email: email.trim().toLowerCase(), 
+          password 
+        });
+        
+        await SecureStore.setItemAsync('userToken', response.data.access_token);
+        navigation.replace('MainTabs');
+      } catch (error) {
+        const errorMsg = error.response?.data?.message || t('authAlerts.loginFailed', "Invalid credentials.");
+        Alert.alert(t('common.error', "Error"), errorMsg);
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -141,7 +196,6 @@ const LoginScreen = ({ navigation }) => {
     setLoading(true);
     setErrors({});
     try {
-      // Reusing your existing send-otp endpoint
       await api.post('/send-otp', { email: email.trim().toLowerCase() });
       setForgotPasswordStep(2);
       Alert.alert("OTP Sent", "Please check your email for the password reset code.");
@@ -300,7 +354,6 @@ const LoginScreen = ({ navigation }) => {
             </View>
           </View>
         </Modal>
-
       </SafeAreaView>
     );
   }
@@ -316,87 +369,113 @@ const LoginScreen = ({ navigation }) => {
           </View>
           
           <Text style={styles.subtitle}>
-              {isRegistering ? t('login.subtitleRegister', 'Create your account') : t('login.subtitleLogin', 'Manage your Bachat Gat')}
+              {isRegistering 
+                ? (isRegisterOtpStep ? 'Verify Your Email' : t('login.subtitleRegister', 'Create your account')) 
+                : t('login.subtitleLogin', 'Manage your Bachat Gat')}
           </Text>
 
-          {isRegistering && (
-            <>
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>{t('login.fullName', 'Full Name')}</Text>
-                <View style={[styles.iconInputRow, errors.name && styles.errorBorder]}>
-                  <Ionicons name="person-outline" size={20} color={errors.name ? COLORS.danger : COLORS.textMuted} />
-                  <TextInput 
-                    ref={nameRef} style={styles.input} placeholder={t('login.fullName', 'Enter Full Name')} 
-                    placeholderTextColor={COLORS.textMuted} value={name} 
-                    onChangeText={(text) => { setName(text); setErrors({...errors, name: null}); }} 
-                    returnKeyType="next" onSubmitEditing={() => phoneRef.current?.focus()} blurOnSubmit={false}
-                  />
-                </View>
-                {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
-              </View>
-
-              <View style={styles.inputContainer}>
-                <Text style={styles.label}>{t('login.mobileNumber', 'Mobile Number')}</Text>
-                <View style={[styles.iconInputRow, errors.phone && styles.errorBorder]}>
-                  <Ionicons name="call-outline" size={20} color={errors.phone ? COLORS.danger : COLORS.textMuted} />
-                  <TextInput 
-                    ref={phoneRef} style={styles.input} placeholder="10 Digits" 
-                    placeholderTextColor={COLORS.textMuted} value={phone} 
-                    onChangeText={(text) => { setPhone(text); setErrors({...errors, phone: null}); }} 
-                    keyboardType="numeric" maxLength={10} returnKeyType="next"
-                    onSubmitEditing={() => emailRef.current?.focus()} blurOnSubmit={false}
-                  />
-                </View>
-                {errors.phone && <Text style={styles.errorText}>{errors.phone}</Text>}
-              </View>
-            </>
-          )}
-
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>{t('login.emailLabel', 'Email Address')}</Text>
-            <View style={[styles.iconInputRow, errors.email && styles.errorBorder]}>
-              <Ionicons name="mail-outline" size={20} color={errors.email ? COLORS.danger : COLORS.textMuted} />
-              <TextInput 
-                ref={emailRef} style={styles.input} placeholder="email@example.com" 
-                placeholderTextColor={COLORS.textMuted} value={email} 
-                onChangeText={(text) => { setEmail(text); setErrors({...errors, email: null}); }} 
-                keyboardType="email-address" autoCapitalize="none" returnKeyType="next"
-                onSubmitEditing={() => passwordRef.current?.focus()} blurOnSubmit={false}
-              />
-            </View>
-            {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
-          </View>
-
-          <View style={styles.inputContainer}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <Text style={[styles.label, {marginBottom: 0}]}>{isRegistering ? t('login.setPassword', 'Set Password') : t('login.password', 'Password')}</Text>
-                {!isRegistering && (
-                  <TouchableOpacity onPress={() => setForgotPasswordStep(1)}>
-                    <Text style={{ color: COLORS.primaryBlue, fontSize: 13, fontWeight: 'bold' }}>Forgot Password?</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-              <View style={[styles.iconInputRow, errors.password && styles.errorBorder]}>
-                <Ionicons name="lock-closed-outline" size={20} color={errors.password ? COLORS.danger : COLORS.textMuted} />
-                <TextInput 
-                  ref={passwordRef} style={styles.input} placeholder="********" 
-                  placeholderTextColor={COLORS.textMuted} value={password} 
-                  onChangeText={(text) => { setPassword(text); setErrors({...errors, password: null}); }} 
-                  secureTextEntry returnKeyType="done" onSubmitEditing={handleAuth} 
-                />
-              </View>
-              {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
-          </View>
-
-          {!isRegistering && (
+          {isRegistering && isRegisterOtpStep ? (
+            // --- REGISTRATION OTP STEP UI ---
             <View style={styles.inputContainer}>
-                <Text style={styles.label}>{t('login.language', 'Language')}</Text>
-                <View style={styles.pickerWrapper}>
-                    <Picker selectedValue={language} onValueChange={(itemValue) => { setLanguage(itemValue); i18n.changeLanguage(itemValue); }} style={styles.picker}>
-                        {LANGUAGES.map((lang) => (<Picker.Item key={lang.code} label={lang.label} value={lang.code} />))}
-                    </Picker>
-                </View>
+              <Text style={styles.label}>Enter 4-Digit Verification OTP</Text>
+              <TextInput 
+                style={[styles.otpInput, errors.registerOtp && styles.errorBorder]} 
+                placeholder="0 0 0 0" 
+                placeholderTextColor={COLORS.textMuted}
+                value={registerOtp} 
+                onChangeText={(text) => { setRegisterOtp(text); setErrors({...errors, registerOtp: null}); }} 
+                keyboardType="number-pad" 
+                maxLength={4}
+              />
+              {errors.registerOtp && <Text style={[styles.errorText, {textAlign: 'center'}]}>{errors.registerOtp}</Text>}
+              
+              <TouchableOpacity style={{marginTop: 15}} onPress={() => setIsRegisterOtpStep(false)}>
+                 <Text style={{textAlign: 'center', color: COLORS.primaryBlue, fontWeight: 'bold'}}>Back to Edit Details</Text>
+              </TouchableOpacity>
             </View>
+          ) : (
+            // --- STANDARD FORM UI ---
+            <>
+              {isRegistering && (
+                <>
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.label}>{t('login.fullName', 'Full Name')}</Text>
+                    <View style={[styles.iconInputRow, errors.name && styles.errorBorder]}>
+                      <Ionicons name="person-outline" size={20} color={errors.name ? COLORS.danger : COLORS.textMuted} />
+                      <TextInput 
+                        ref={nameRef} style={styles.input} placeholder={t('login.fullName', 'Enter Full Name')} 
+                        placeholderTextColor={COLORS.textMuted} value={name} 
+                        onChangeText={(text) => { setName(text); setErrors({...errors, name: null}); }} 
+                        returnKeyType="next" onSubmitEditing={() => phoneRef.current?.focus()} blurOnSubmit={false}
+                      />
+                    </View>
+                    {errors.name && <Text style={styles.errorText}>{errors.name}</Text>}
+                  </View>
+
+                  <View style={styles.inputContainer}>
+                    <Text style={styles.label}>{t('login.mobileNumber', 'Mobile Number')}</Text>
+                    <View style={[styles.iconInputRow, errors.phone && styles.errorBorder]}>
+                      <Ionicons name="call-outline" size={20} color={errors.phone ? COLORS.danger : COLORS.textMuted} />
+                      <TextInput 
+                        ref={phoneRef} style={styles.input} placeholder="10 Digits" 
+                        placeholderTextColor={COLORS.textMuted} value={phone} 
+                        onChangeText={(text) => { setPhone(text); setErrors({...errors, phone: null}); }} 
+                        keyboardType="numeric" maxLength={10} returnKeyType="next"
+                        onSubmitEditing={() => emailRef.current?.focus()} blurOnSubmit={false}
+                      />
+                    </View>
+                    {errors.phone && <Text style={styles.errorText}>{errors.phone}</Text>}
+                  </View>
+                </>
+              )}
+
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>{t('login.emailLabel', 'Email Address')}</Text>
+                <View style={[styles.iconInputRow, errors.email && styles.errorBorder]}>
+                  <Ionicons name="mail-outline" size={20} color={errors.email ? COLORS.danger : COLORS.textMuted} />
+                  <TextInput 
+                    ref={emailRef} style={styles.input} placeholder="email@example.com" 
+                    placeholderTextColor={COLORS.textMuted} value={email} 
+                    onChangeText={(text) => { setEmail(text); setErrors({...errors, email: null}); }} 
+                    keyboardType="email-address" autoCapitalize="none" returnKeyType="next"
+                    onSubmitEditing={() => passwordRef.current?.focus()} blurOnSubmit={false}
+                  />
+                </View>
+                {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
+              </View>
+
+              <View style={styles.inputContainer}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <Text style={[styles.label, {marginBottom: 0}]}>{isRegistering ? t('login.setPassword', 'Set Password') : t('login.password', 'Password')}</Text>
+                    {!isRegistering && (
+                      <TouchableOpacity onPress={() => setForgotPasswordStep(1)}>
+                        <Text style={{ color: COLORS.primaryBlue, fontSize: 13, fontWeight: 'bold' }}>Forgot Password?</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  <View style={[styles.iconInputRow, errors.password && styles.errorBorder]}>
+                    <Ionicons name="lock-closed-outline" size={20} color={errors.password ? COLORS.danger : COLORS.textMuted} />
+                    <TextInput 
+                      ref={passwordRef} style={styles.input} placeholder="********" 
+                      placeholderTextColor={COLORS.textMuted} value={password} 
+                      onChangeText={(text) => { setPassword(text); setErrors({...errors, password: null}); }} 
+                      secureTextEntry returnKeyType="done" onSubmitEditing={handleAuth} 
+                    />
+                  </View>
+                  {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
+              </View>
+
+              {!isRegistering && (
+                <View style={styles.inputContainer}>
+                    <Text style={styles.label}>{t('login.language', 'Language')}</Text>
+                    <View style={styles.pickerWrapper}>
+                        <Picker selectedValue={language} onValueChange={(itemValue) => { setLanguage(itemValue); i18n.changeLanguage(itemValue); }} style={styles.picker}>
+                            {LANGUAGES.map((lang) => (<Picker.Item key={lang.code} label={lang.label} value={lang.code} />))}
+                        </Picker>
+                    </View>
+                </View>
+              )}
+            </>
           )}
 
           <View style={styles.consentContainer}>
@@ -412,11 +491,15 @@ const LoginScreen = ({ navigation }) => {
           </View>
 
           <TouchableOpacity style={styles.button} onPress={handleAuth} disabled={loading}>
-            {loading ? <ActivityIndicator color={COLORS.bgWhite} /> : <Text style={styles.buttonText}>{isRegistering ? t('login.btnRegister', 'Register') : t('login.btnLogin', 'Login Now')}</Text>}
+            {loading ? <ActivityIndicator color={COLORS.bgWhite} /> : <Text style={styles.buttonText}>
+              {isRegistering 
+                ? (isRegisterOtpStep ? 'Verify & Register' : t('login.btnRegister', 'Register')) 
+                : t('login.btnLogin', 'Login Now')}
+            </Text>}
           </TouchableOpacity>
 
           <View style={styles.footer}>
-              <TouchableOpacity onPress={() => { setIsRegistering(!isRegistering); setErrors({}); }}>
+              <TouchableOpacity onPress={() => { setIsRegistering(!isRegistering); setIsRegisterOtpStep(false); setRegisterOtp(''); setErrors({}); }}>
                   <Text style={styles.toggleText}>{isRegistering ? t('login.toggleLogin', 'Already have an account? Login') : t('login.toggleRegister', 'New User? Register Now')}</Text>
               </TouchableOpacity>
           </View>
