@@ -22,7 +22,6 @@ import * as Speech from 'expo-speech';
 import api from '../services/api';
 import { COLORS } from '../constants/theme'; 
 
-// --- IMPORTS FOR NOTIFICATIONS ADDED BACK ---
 import { requestNotificationPermissions, scheduleEmiReminderLocal, cancelAllReminders } from '../services/notificationService';
 
 const LoanHubScreen = ({ route, navigation }) => {
@@ -55,6 +54,7 @@ const LoanHubScreen = ({ route, navigation }) => {
   const [rejectModalVisible, setRejectModalVisible] = useState(false);
   const [rejectingLoanId, setRejectingLoanId] = useState(null);
   const [rejectionReason, setRejectionReason] = useState('');
+  const [rejectionReasonMode, setRejectionReasonMode] = useState(''); // NEW STATE FOR SMART CHIPS
 
   const [repayModalVisible, setRepayModalVisible] = useState(false);
   const [repayingLoanId, setRepayingLoanId] = useState(null);
@@ -64,6 +64,15 @@ const LoanHubScreen = ({ route, navigation }) => {
   const [approveModalVisible, setApproveModalVisible] = useState(false);
   const [approvingLoan, setApprovingLoan] = useState(null);
   const [customInterest, setCustomInterest] = useState('');
+
+  // --- NEW: SMART CHIPS FOR REJECTIONS ---
+  const REJECT_REASONS = [
+    t('quickReasons.lowFunds', 'Insufficient Group Funds'), 
+    t('quickReasons.prevPending', 'Previous Loan Pending'), 
+    t('quickReasons.lowTrust', 'Low Trust Score'), 
+    t('quickReasons.highAmount', 'Amount Too High'), 
+    t('quickReasons.other', 'Other')
+  ];
 
   const effectiveInterest = proposedInterest !== '' && !isNaN(proposedInterest) ? parseFloat(proposedInterest) : defaultGroupInterest;
   const monthlyEMI = (amount + (amount * (effectiveInterest / 100) * duration)) / duration;
@@ -99,7 +108,6 @@ const LoanHubScreen = ({ route, navigation }) => {
         setLoans(fetchedLoans); 
       }
 
-      // --- THE FIX: TRANSLATED DYNAMIC PUSH NOTIFICATION ---
       if (fetchedLoans?.active && fetchedLoans.active.length > 0) {
          const hasPermission = await requestNotificationPermissions();
          if (hasPermission) {
@@ -201,7 +209,9 @@ const LoanHubScreen = ({ route, navigation }) => {
   };
 
   const submitRejection = async () => {
-    if (!rejectionReason.trim()) return Alert.alert(t('common.error', "Error"), t('alerts.reasonRequired', "Reason required."));
+    if (!rejectionReasonMode) return Alert.alert(t('common.error', "Error"), "Please select a reason.");
+    if (rejectionReasonMode === 'custom' && !rejectionReason.trim()) return Alert.alert(t('common.error', "Error"), t('alerts.reasonRequired', "Reason required."));
+    
     try {
       const token = await SecureStore.getItemAsync('userToken');
       const loanToReject = [...loans.pending, ...loans.active].find(l => l.id === rejectingLoanId);
@@ -280,7 +290,11 @@ const LoanHubScreen = ({ route, navigation }) => {
         <View style={styles.loanHeader}>
           <View>
             <Text style={styles.loanUser}>{loan.user?.name}</Text>
-            {isGlobalMode && <Text style={{fontSize: 12, color: COLORS.primaryBlue, fontWeight: 'bold'}}>{loan.group?.name}</Text>}
+            {isGlobalMode && (
+              <Text style={{fontSize: 12, color: COLORS.primaryBlue, fontWeight: 'bold'}}>
+                {loan.group?.name}
+              </Text>
+            )}
           </View>
           <Text style={styles.loanDate}>{new Date(loan.created_at).toLocaleDateString()}</Text>
         </View>
@@ -303,7 +317,10 @@ const LoanHubScreen = ({ route, navigation }) => {
         {activeTab === 'active' && (
           <View style={styles.emiTrackerContainer}>
             <View style={styles.emiHeader}>
-              <Text style={styles.emiAmountText}>{t('loanHub.estEmi', 'EMI')}: ₹{Math.ceil(emiAmount)} <Text style={{fontSize: 12, fontWeight: 'normal'}}>/mo</Text></Text>
+              <Text style={styles.emiAmountText}>
+                {t('loanHub.estEmi', 'EMI')}: ₹{Math.ceil(emiAmount)} 
+                <Text style={{fontSize: 12, fontWeight: 'normal'}}>/mo</Text>
+              </Text>
               <View style={styles.emiPill}>
                  <Text style={styles.emiPillText}>{fullEmisPaid} / {months} {t('groupDetails.statusPaid', 'Paid')}</Text>
               </View>
@@ -328,11 +345,22 @@ const LoanHubScreen = ({ route, navigation }) => {
 
         {isLocalAdmin && loan.status === 'pending' && (
           <View style={styles.actionRow}>
-            <TouchableOpacity style={[styles.actionBtn, { borderColor: COLORS.danger, borderWidth: 1 }]} onPress={() => { setRejectingLoanId(loan.id); setRejectModalVisible(true); }}>
+            <TouchableOpacity 
+              style={[styles.actionBtn, { borderColor: COLORS.danger, borderWidth: 1 }]} 
+              onPress={() => { 
+                setRejectingLoanId(loan.id); 
+                setRejectionReasonMode(''); 
+                setRejectionReason(''); 
+                setRejectModalVisible(true); 
+              }}
+            >
               <Text style={{color: COLORS.danger, fontWeight: 'bold'}}>{t('common.cancel', 'Reject')}</Text>
             </TouchableOpacity>
             
-            <TouchableOpacity style={[styles.actionBtn, { backgroundColor: COLORS.success }]} onPress={() => openApproveModal(loan)}>
+            <TouchableOpacity 
+              style={[styles.actionBtn, { backgroundColor: COLORS.success }]} 
+              onPress={() => openApproveModal(loan)}
+            >
               <Text style={{color: COLORS.bgWhite, fontWeight: 'bold'}}>{t('groupDetails.approveBtn', 'Approve')}</Text>
             </TouchableOpacity>
           </View>
@@ -374,9 +402,13 @@ const LoanHubScreen = ({ route, navigation }) => {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         {!isGlobalMode && (
-           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}><Ionicons name="arrow-back" size={24} color={COLORS.textDark} /></TouchableOpacity>
+           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+             <Ionicons name="arrow-back" size={24} color={COLORS.textDark} />
+           </TouchableOpacity>
         )}
-        <Text style={[styles.headerTitle, isGlobalMode && {textAlign: 'center'}]}>{t('loanHub.title', 'Loan Hub')}</Text>
+        <Text style={[styles.headerTitle, isGlobalMode && {textAlign: 'center'}]}>
+          {t('loanHub.title', 'Loan Hub')}
+        </Text>
       </View>
 
       <ScrollView 
@@ -418,13 +450,41 @@ const LoanHubScreen = ({ route, navigation }) => {
               </View>
           )}
 
-          <View style={styles.sliderHeader}><Text style={styles.label}>{t('loanHub.principal', 'Principal')}</Text><Text style={styles.sliderValue}>₹{amount.toLocaleString()}</Text></View>
-          <Slider style={{width: '100%', height: 40}} minimumValue={1000} maximumValue={maxGroupLoan} step={500} value={amount} onValueChange={setAmount} minimumTrackTintColor={COLORS.warning} maximumTrackTintColor={COLORS.borderLight} thumbTintColor={COLORS.warning} />
+          <View style={styles.sliderHeader}>
+            <Text style={styles.label}>{t('loanHub.principal', 'Principal')}</Text>
+            <Text style={styles.sliderValue}>₹{amount.toLocaleString()}</Text>
+          </View>
+          <Slider 
+            style={{width: '100%', height: 40}} 
+            minimumValue={1000} 
+            maximumValue={maxGroupLoan} 
+            step={500} 
+            value={amount} 
+            onValueChange={setAmount} 
+            minimumTrackTintColor={COLORS.warning} 
+            maximumTrackTintColor={COLORS.borderLight} 
+            thumbTintColor={COLORS.warning} 
+          />
           
-          <View style={[styles.sliderHeader, { marginTop: 15 }]}><Text style={styles.label}>{t('loanHub.duration', 'Duration')}</Text><Text style={styles.sliderValue}>{duration} {t('loanHub.months', 'Months')}</Text></View>
-          <Slider style={{width: '100%', height: 40}} minimumValue={1} maximumValue={24} step={1} value={duration} onValueChange={setDuration} minimumTrackTintColor={COLORS.primaryBlue} maximumTrackTintColor={COLORS.borderLight} thumbTintColor={COLORS.primaryBlue} />
+          <View style={[styles.sliderHeader, { marginTop: 15 }]}>
+            <Text style={styles.label}>{t('loanHub.duration', 'Duration')}</Text>
+            <Text style={styles.sliderValue}>{duration} {t('loanHub.months', 'Months')}</Text>
+          </View>
+          <Slider 
+            style={{width: '100%', height: 40}} 
+            minimumValue={1} 
+            maximumValue={24} 
+            step={1} 
+            value={duration} 
+            onValueChange={setDuration} 
+            minimumTrackTintColor={COLORS.primaryBlue} 
+            maximumTrackTintColor={COLORS.borderLight} 
+            thumbTintColor={COLORS.primaryBlue} 
+          />
 
-          <View style={[styles.sliderHeader, { marginTop: 15 }]}><Text style={styles.label}>{t('loanHub.proposedInterest', 'Proposed Interest Rate (%)')}</Text></View>
+          <View style={[styles.sliderHeader, { marginTop: 15 }]}>
+            <Text style={styles.label}>{t('loanHub.proposedInterest', 'Proposed Interest Rate (%)')}</Text>
+          </View>
           <View style={styles.inputWrapper}>
             <Ionicons name="pie-chart-outline" size={20} color={COLORS.textMuted} style={{marginRight: 10}} />
             <TextInput
@@ -442,7 +502,11 @@ const LoanHubScreen = ({ route, navigation }) => {
             <Text style={styles.emiValue}>₹{Math.ceil(monthlyEMI).toLocaleString()}</Text>
           </View>
 
-          <TouchableOpacity style={[styles.submitButton, submitting && styles.disabledButton]} onPress={handleRequestLoan} disabled={submitting}>
+          <TouchableOpacity 
+            style={[styles.submitButton, submitting && styles.disabledButton]} 
+            onPress={handleRequestLoan} 
+            disabled={submitting}
+          >
             {submitting ? <ActivityIndicator color={COLORS.bgWhite} /> : <Text style={styles.submitButtonText}>{t('loanHub.applyBtn', 'Ask for Loan')}</Text>}
           </TouchableOpacity>
         </View>
@@ -468,7 +532,9 @@ const LoanHubScreen = ({ route, navigation }) => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t('loanHub.reviewTitle', 'Review Loan Details')}</Text>
-            <Text style={{color: COLORS.textGray, marginBottom: 15}}>{t('loanHub.approvingFor', 'Approving for')} <Text style={{fontWeight: 'bold', color: COLORS.textDark}}>{approvingLoan?.user?.name}</Text>.</Text>
+            <Text style={{color: COLORS.textGray, marginBottom: 15}}>
+              {t('loanHub.approvingFor', 'Approving for')} <Text style={{fontWeight: 'bold', color: COLORS.textDark}}>{approvingLoan?.user?.name}</Text>.
+            </Text>
             
             <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15, paddingBottom: 15, borderBottomWidth: 1, borderColor: COLORS.borderLight}}>
                 <Text style={styles.labelSmall}>{t('loanHub.principal', 'Principal:')}</Text>
@@ -485,7 +551,9 @@ const LoanHubScreen = ({ route, navigation }) => {
             />
             
             <View style={styles.modalActionRow}>
-              <TouchableOpacity onPress={() => setApproveModalVisible(false)} style={{padding: 10}}><Text style={{color: COLORS.textDark}}>{t('common.cancel', 'Cancel')}</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => setApproveModalVisible(false)} style={{padding: 10}}>
+                <Text style={{color: COLORS.textDark}}>{t('common.cancel', 'Cancel')}</Text>
+              </TouchableOpacity>
               <TouchableOpacity onPress={submitApproval} style={[styles.modalSubmitBtn, {backgroundColor: COLORS.success}]}>
                 <Text style={{color: COLORS.bgWhite, fontWeight: 'bold'}}>{t('common.submit', 'Confirm')}</Text>
               </TouchableOpacity>
@@ -498,10 +566,66 @@ const LoanHubScreen = ({ route, navigation }) => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t('loanHub.reason', 'Reason')}</Text>
-            <TextInput style={styles.modalInput} multiline onChangeText={setRejectionReason} placeholder="Explain why..." placeholderTextColor={COLORS.textMuted} color={COLORS.textDark} />
+            
+            {/* --- NEW: SMART CHIPS FOR REJECTIONS --- */}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10, marginTop: 10 }}>
+              {REJECT_REASONS.map((reason, index) => {
+                const isSelected = rejectionReasonMode === 'chip' && rejectionReason === reason;
+                const isOther = reason === t('quickReasons.other', 'Other');
+                const isOtherSelected = isOther && rejectionReasonMode === 'custom';
+                return (
+                  <TouchableOpacity
+                    key={index}
+                    style={{ 
+                      backgroundColor: isSelected || isOtherSelected ? COLORS.primaryBlue : COLORS.bgLight, 
+                      paddingHorizontal: 15, 
+                      paddingVertical: 8, 
+                      borderRadius: 20, 
+                      marginRight: 10, 
+                      borderWidth: 1, 
+                      borderColor: isSelected || isOtherSelected ? COLORS.primaryBlue : COLORS.borderLight 
+                    }}
+                    onPress={() => {
+                      if (isOther) {
+                        setRejectionReasonMode('custom');
+                        setRejectionReason('');
+                      } else {
+                        setRejectionReasonMode('chip');
+                        setRejectionReason(reason);
+                      }
+                    }}
+                  >
+                    <Text style={{ 
+                      color: isSelected || isOtherSelected ? COLORS.bgWhite : COLORS.textGray, 
+                      fontSize: 13, 
+                      fontWeight: 'bold' 
+                    }}>
+                      {reason}
+                    </Text>
+                  </TouchableOpacity>
+                )
+              })}
+            </ScrollView>
+
+            {rejectionReasonMode === 'custom' && (
+              <TextInput 
+                style={styles.modalInput} 
+                multiline 
+                value={rejectionReason} 
+                onChangeText={setRejectionReason} 
+                placeholder="Type custom reason..." 
+                placeholderTextColor={COLORS.textMuted} 
+                color={COLORS.textDark} 
+              />
+            )}
+            
             <View style={styles.modalActionRow}>
-              <TouchableOpacity onPress={() => setRejectModalVisible(false)} style={{padding: 10}}><Text style={{color: COLORS.textDark}}>{t('common.cancel', 'Cancel')}</Text></TouchableOpacity>
-              <TouchableOpacity onPress={submitRejection} style={[styles.modalSubmitBtn, {backgroundColor: COLORS.danger}]}><Text style={{color: COLORS.bgWhite, fontWeight: 'bold'}}>{t('common.submit', 'Submit')}</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => setRejectModalVisible(false)} style={{padding: 10}}>
+                <Text style={{color: COLORS.textDark}}>{t('common.cancel', 'Cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={submitRejection} style={[styles.modalSubmitBtn, {backgroundColor: COLORS.danger}]}>
+                <Text style={{color: COLORS.bgWhite, fontWeight: 'bold'}}>{t('common.submit', 'Submit')}</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -526,8 +650,12 @@ const LoanHubScreen = ({ route, navigation }) => {
               color={COLORS.textDark}
             />
             <View style={styles.modalActionRow}>
-              <TouchableOpacity onPress={() => setRepayModalVisible(false)} style={{padding: 10}}><Text style={{color: COLORS.textDark}}>{t('common.cancel', 'Cancel')}</Text></TouchableOpacity>
-              <TouchableOpacity onPress={submitRepayment} style={[styles.modalSubmitBtn, {backgroundColor: COLORS.success}]}><Text style={{color: COLORS.bgWhite, fontWeight: 'bold'}}>{t('common.submit', 'Save')}</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => setRepayModalVisible(false)} style={{padding: 10}}>
+                <Text style={{color: COLORS.textDark}}>{t('common.cancel', 'Cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={submitRepayment} style={[styles.modalSubmitBtn, {backgroundColor: COLORS.success}]}>
+                <Text style={{color: COLORS.bgWhite, fontWeight: 'bold'}}>{t('common.submit', 'Save')}</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>

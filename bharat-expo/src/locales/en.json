@@ -9,11 +9,27 @@
     "delete": "Delete",
     "actionRequired": "Action Required"
   },
+  "quickReasons": {
+    "late": "Late to Meeting",
+    "missed": "Missed Saving",
+    "rules": "Rule Violation",
+    "behavior": "Disruptive Behavior",
+    "typo": "Typo in Amount",
+    "wrongMember": "Wrong Member Selected",
+    "cashNotRec": "Cash Not Received",
+    "duplicate": "Duplicate Entry",
+    "lowFunds": "Insufficient Group Funds",
+    "prevPending": "Previous Loan Pending",
+    "lowTrust": "Low Trust Score",
+    "highAmount": "Amount Too High",
+    "other": "Other"
+  },
   "alerts": {
     "reasonRequired": "You must provide a reason.",
     "voidSuccess": "Transaction securely voided.",
     "voidFailed": "Failed to void transaction.",
     "voidPrompt": "Void Transaction",
+    "voidWarning": "You are about to cancel this transaction. It will remain in the logs as 'Voided' for audit purposes.",
     "memberApproved": "Member approved!",
     "memberApproveFailed": "Failed to approve member.",
     "promotePrompt": "Make this member a Co-Admin?",
@@ -59,7 +75,8 @@
     "welcomeDesc": "Looks like you are new here. Please fill in your details to create an account.",
     "notice": "Notice",
     "valError": "Validation Error",
-    "invalidOtp": "Invalid OTP. Please try again."
+    "invalidOtp": "Invalid OTP. Please try again.",
+    "resetSuccess": "Password reset successfully. You can now login."
   },
   "terms": {
     "title": "Terms & Privacy",
@@ -93,7 +110,23 @@
     "toggleOtp": "Login with OTP instead",
     "togglePassword": "Login with Password instead",
     "iAgreeTo": "I agree to the ",
-    "termsLink": "Terms of Service & Privacy Policy"
+    "termsLink": "Terms of Service & Privacy Policy",
+    "securingSession": "Securing session...",
+    "forgotPassword": "Forgot Password?",
+    "resetTitle": "Reset Password",
+    "createNewPass": "Create New Password",
+    "resetDesc1": "Enter your registered email address to receive a 4-digit verification code.",
+    "resetDesc2": "We sent a code to your email. Enter it below along with your new password.",
+    "btnSendOtp": "Send OTP",
+    "btnResetPass": "Reset Password",
+    "tryAnotherWay": "Didn't use a real email? Try another way.",
+    "recoveryTitle": "Account Recovery",
+    "recoveryWarning": "If you registered with a dummy email address and forgot your password, you cannot receive the reset OTP automatically.",
+    "recoveryStepsTitle": "How to recover your account:",
+    "recoveryStep1": "1. Ask your Gat Pramukh (Admin) to contact support on your behalf.",
+    "recoveryStep2": "2. Or email us directly from your working email address at bharatbachat@sarvashikshan.com providing your registered phone number.",
+    "btnUnderstood": "Understood",
+    "newPassword": "New Password"
   },
   "profile": {
     "title": "My Profile",
@@ -104,6 +137,7 @@
     "logout": "Log Out",
     "version": "Bharat Bachat App v1.0.0",
     "trustScore": "Bachat Trust Score",
+    "trustScoreDesc": "Score based on consistent monthly contributions.",
     "excellent": "Excellent Standing",
     "good": "Good Standing",
     "downloadStatement": "Download Statement",
@@ -117,7 +151,16 @@
     "deleteErrorFallback": "Please clear all active loans or group admin duties before deleting.",
     "accountSettings": "Account Settings",
     "support": "Support & About",
-    "terms": "Terms & Privacy Policy"
+    "terms": "Terms & Privacy Policy",
+    "verified": "Verified Member",
+    "verificationPending": "Verification Pending",
+    "unverifiedTitle": "Account Not Verified",
+    "unverifiedDesc": "Tap here to verify your email address to secure your account.",
+    "verifyEmailTitle": "Verify Email",
+    "verifyEmailDesc": "We have sent a 4-digit code to your email. Enter it below to verify your account.",
+    "btnVerifyNow": "Verify Now",
+    "resendCode": "Resend Code",
+    "resendCodeTimer": "Resend Code in {{seconds}}s"
   },
   "dashboard": {
     "welcome": "Hello",
@@ -135,7 +178,7 @@
     "createGat": "Create Gat",
     "joinGat": "Join Gat",
     "faqHelp": "FAQ / Help",
-    "aboutApp": "About App",
+    "aboutApp": "About Bharat Bachat",
     "startMeeting": "Start Monthly Meeting",
     "startMeetingSub": "Take attendance & collect savings",
     "selectGroupTitle": "Select Bachat Gat",
@@ -144,7 +187,13 @@
   "about": {
     "p1": "Bharat Bachat is a secure digital ledger designed specifically for Self-Help Groups (Bachat Gats).",
     "p2": "Our mission is to replace easily-lost paper passbooks with a fully transparent, offline-capable mobile application. This ensures every member always knows exactly how much they have saved and what loans are active.",
-    "p3": "Version: 1.0.0\nMade with ❤️ in India."
+    "p3": "Version: 1.0.0\nMade with ❤️ in India.",
+    "coreTeam": "Core Development Team",
+    "projectGuide": "Project Guide",
+    "poweredBy": "Powered By",
+    "contactSupport": "Contact Support",
+    "supportEmail": "For any other queries, reach out to us at:",
+    "emailAddress": "bharatbachat@sarvashikshan.com"
   },
   "faq": {
     "catGroups": "🏢 Group Management",
@@ -196,9 +245,9 @@
     "addSavingsBtn": "Collect Savings",
     "promoteBtn": "Promote to Admin",
     "demoteBtn": "Demote to Member",
-    "fineBtn": "Charge Fine",
+    "fineBtn": "Charge Fine / Penalty",
     "removeBtn": "Remove Member",
-    "chargeFineTitle": "Add Fine",
+    "chargeFineTitle": "Add Fine / Penalty",
     "amountPlaceholder": "Amount (e.g. ₹50)",
     "reasonPlaceholder": "Reason (e.g. Late fee)",
     "sendReceipt": "Send Receipt",
@@ -206,7 +255,17 @@
     "sendReminderSub": "Notify all members via WhatsApp",
     "deleteGroupBtn": "Delete This Group",
     "deleteGroupTitle": "Delete Bachat Gat",
-    "deleteGroupDesc": "Are you absolutely sure? This will permanently delete the group, all members, and all financial records. You can only do this if the group balance is exactly ₹0."
+    "deleteGroupDesc": "Are you absolutely sure? This will permanently delete the group, all members, and all financial records. You can only do this if the group balance is exactly ₹0.",
+    "currentMonthStatus": "Current Month Status:"
+  },
+  "editTx": {
+    "secureEditMode": "Secure Edit Mode",
+    "auditWarning": "All edits are permanently tracked in the group audit log.",
+    "editAmount": "Edit Amount (₹)",
+    "paymentMethod": "Payment Method / Remarks",
+    "reasonRequired": "Reason for Edit (Required)",
+    "btnSaveEdit": "Save & Log Edit",
+    "customReasonPlaceholder": "e.g., Typed 500 instead of 5000"
   },
   "createGroup": {
     "title": "Start a New Bachat Gat",
@@ -316,7 +375,7 @@
     "totalDue": "Pending",
     "reason": "Reason",
     "recordRepayment": "Record Installment",
-    "estimator": "Loan Estimator",
+    "estimator": "Loan Request & Estimator",
     "applyBtn": "Ask for Loan",
     "tab_pending": "PENDING",
     "tab_active": "ACTIVE",
@@ -367,7 +426,8 @@
   },
   "membersList": {
     "title": "Group Directory",
-    "addMemberBtn": "Add Manually"
+    "addMemberBtn": "Add Manually",
+    "noPhone": "No phone provided"
   },
   "groupsHub": {
     "noGroups": "You haven't joined any Bachat Gats yet."
@@ -382,7 +442,7 @@
   "errors": {
     "emptyPhone": "Please enter your mobile number.",
     "invalidPhone": "Please enter a valid 10-digit mobile number.",
-    "emptyOtp": "Please enter the 6-digit OTP.",
+    "emptyOtp": "Please enter the 4-digit OTP.",
     "invalidOtp": "Incorrect OTP. Please check and try again.",
     "emptyName": "Please enter the full name.",
     "emptyPassword": "Please enter your password.",
@@ -397,9 +457,9 @@
     "meetingReminder": "📅 *Monthly Meeting Reminder* 📅\n\nDear Members of *{{groupName}}*,\n\nThis is a gentle reminder that our monthly Bachat Gat meeting is coming up. Please remember to bring your monthly savings and passbooks.\n\nThank you! 🙏"
   },
   "fundDistribution": "Fund Distribution",
-    "in": "In",
-    "out": "Out",
-    "sendReminder": "Send Meeting Reminder",
+  "in": "In",
+  "out": "Out",
+  "sendReminder": "Send Meeting Reminder",
   "push": {
     "meetingTitle": "📅 {{groupName}} Meeting Tomorrow!",
     "meetingBody": "Don't forget to bring your monthly savings and passbook.",

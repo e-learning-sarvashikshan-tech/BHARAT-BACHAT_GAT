@@ -96,24 +96,32 @@ const LedgerScreen = ({ route, navigation }) => {
       let totalWithdrawn = 0;
 
       filteredTransactions.forEach((tx) => {
-        const date = new Date(tx.transaction_date).toLocaleDateString();
-        const typeColor = tx.type === 'deposit' ? COLORS.success : COLORS.danger;
-        const sign = tx.type === 'deposit' ? '+' : '-';
+        const dateObj = new Date(tx.transaction_date);
+        const formattedDate = `${dateObj.getDate().toString().padStart(2, '0')}/${(dateObj.getMonth()+1).toString().padStart(2, '0')}/${dateObj.getFullYear()}`;
+        
+        // POSITIVE CONTRIBUTION MATH
+        const isPenalty = tx.category === 'penalty';
+        const effectiveType = isPenalty ? 'deposit' : tx.type;
 
-        if (tx.type === 'deposit' && tx.category !== 'voided') totalDeposited += parseFloat(tx.amount);
-        if (tx.type === 'withdrawal' && tx.category !== 'voided') totalWithdrawn += parseFloat(tx.amount);
+        const typeColor = effectiveType === 'deposit' ? COLORS.success : COLORS.danger;
+        const sign = effectiveType === 'deposit' ? '+' : '-';
+
+        if (effectiveType === 'deposit' && tx.category !== 'voided') totalDeposited += parseFloat(tx.amount);
+        if (effectiveType === 'withdrawal' && tx.category !== 'voided') totalWithdrawn += parseFloat(tx.amount);
+
+        let particulars = tx.method || 'Transfer';
+        if (isPenalty) particulars += ' (Fine)';
 
         tableRows += `
             <tr>
-              <td>${date}</td>
+              <td>${formattedDate}</td>
               <td>${tx.user?.name || 'Member'}</td>
-              <td>${tx.method || 'Transfer'}</td>
+              <td>${particulars}</td>
               <td style="color: ${typeColor}; font-weight: bold; text-align: right;">${sign}₹${tx.amount}</td>
             </tr>
           `;
       });
 
-      // --- MOVED INSIDE THE FUNCTION TO PREVENT CRASHING ---
       let base64Logo = '';
       try {
         const asset = Asset.fromModule(require('../../assets/logo.png'));
@@ -124,33 +132,35 @@ const LedgerScreen = ({ route, navigation }) => {
         console.log("Could not load local logo for PDF.");
       }
 
-      // --- THE FIX: REMOVED REDUNDANT TEXT LOGO, ADDED SARVASHIKSHAN ---
       const htmlContent = `
         <html>
           <head>
             <style>
-              body { font-family: 'Courier New', Courier, monospace; padding: 40px; color: #333; background-color: #fdfbf7; }
-              .header { text-align: center; border-bottom: 2px solid #d1c7a3; padding-bottom: 20px; margin-bottom: 30px; }
-              .logo-img { height: 80px; margin-bottom: 5px; } 
-              .powered-by { font-size: 11px; color: #777; font-weight: bold; letter-spacing: 1px; margin-top: 0px; margin-bottom: 15px; text-transform: uppercase; }
-              .sub-logo { font-size: 14px; font-weight: bold; color: #5c5442; margin-top: 15px; letter-spacing: 2px; }
-              .summary-box { background-color: #efeadd; padding: 20px; border-radius: 8px; margin-bottom: 30px; display: flex; justify-content: space-between; border: 1px solid #d1c7a3; }
+              body { font-family: 'Courier New', Courier, monospace; padding: 30px; color: #333; background-color: #fdfbf7; }
+              .header { text-align: center; border-bottom: 2px solid #d1c7a3; padding-bottom: 20px; margin-bottom: 25px; }
+              .logo-img { width: 260px; height: auto; object-fit: contain; margin-bottom: 8px; } 
+              .powered-by { font-size: 11px; color: #888; font-weight: bold; letter-spacing: 1.5px; margin: 0 0 15px 0; text-transform: uppercase; }
+              .doc-title { font-size: 18px; font-weight: bold; color: #333; margin: 0; text-transform: uppercase; letter-spacing: 1px; }
+              .doc-date { font-size: 13px; color: #5c5442; margin: 6px 0 0 0; }
+              
+              .summary-box { background-color: #efeadd; padding: 15px 20px; border-radius: 8px; margin-bottom: 25px; display: flex; justify-content: space-between; border: 1px solid #d1c7a3; }
               .summary-item { text-align: center; }
-              .summary-title { font-size: 12px; color: #5c5442; text-transform: uppercase; font-weight: bold; margin: 0; }
-              .summary-amount { font-size: 22px; margin: 5px 0 0 0; font-weight: bold; }
-              table { width: 100%; border-collapse: collapse; margin-top: 20px; border: 1px solid #d1c7a3; }
-              th { background-color: #efeadd; color: #5c5442; font-weight: bold; text-align: left; padding: 12px 10px; border-bottom: 2px solid #d1c7a3; text-transform: uppercase; font-size: 12px; }
-              td { padding: 12px 10px; border-bottom: 1px solid #e8e4d3; font-size: 13px; }
-              .stamp-container { text-align: right; margin-top: 40px; padding-right: 20px; }
-              .stamp { display: inline-block; border: 3px solid #16a34a; color: #16a34a; font-weight: 900; padding: 15px; border-radius: 50%; transform: rotate(-15deg); text-align: center; letter-spacing: 1px; }
+              .summary-title { font-size: 11px; color: #5c5442; text-transform: uppercase; font-weight: bold; margin: 0; }
+              .summary-amount { font-size: 20px; margin: 4px 0 0 0; font-weight: bold; }
+              table { width: 100%; border-collapse: collapse; margin-top: 10px; border: 1px solid #d1c7a3; }
+              th { background-color: #efeadd; color: #5c5442; font-weight: bold; text-align: left; padding: 10px; border-bottom: 2px solid #d1c7a3; text-transform: uppercase; font-size: 11px; }
+              td { padding: 10px; border-bottom: 1px solid #e8e4d3; font-size: 12px; }
+              .stamp-container { text-align: right; margin-top: 30px; padding-right: 20px; }
+              .stamp { display: inline-block; border: 3px solid #16a34a; color: #16a34a; font-weight: 900; padding: 12px; border-radius: 50%; transform: rotate(-15deg); text-align: center; letter-spacing: 1px; font-size: 12px; }
             </style>
           </head>
           <body>
             <div class="header">
               ${base64Logo ? `<img src="${base64Logo}" class="logo-img" alt="Bharat Bachat Logo" />` : ''}
               <p class="powered-by">Powered By SarvaShikshan</p>
-              <p class="sub-logo">OFFICIAL GROUP PASSBOOK</p>
-              <p style="font-size: 14px; color: #5c5442; margin-top: 10px;">Period: ${startDate.toDateString()} to ${endDate.toDateString()}</p>
+              
+              <p class="doc-title">OFFICIAL GROUP PASSBOOK</p>
+              <p class="doc-date">Period: ${startDate.getDate().toString().padStart(2, '0')}/${(startDate.getMonth()+1).toString().padStart(2, '0')}/${startDate.getFullYear()} to ${endDate.getDate().toString().padStart(2, '0')}/${(endDate.getMonth()+1).toString().padStart(2, '0')}/${endDate.getFullYear()}</p>
             </div>
             
             <div class="summary-box">
@@ -209,12 +219,19 @@ const LedgerScreen = ({ route, navigation }) => {
 
   let runningBalance = 0;
   const sortedTx = [...transactions].sort((a, b) => new Date(a.transaction_date) - new Date(b.transaction_date));
+  
   const ledgerRows = sortedTx.map((tx) => {
-    if (tx.category !== 'voided') {
-      if (tx.type === 'deposit') runningBalance += parseFloat(tx.amount);
-      if (tx.type === 'withdrawal') runningBalance -= parseFloat(tx.amount);
+    const isVoided = tx.category === 'voided';
+    const isPenalty = tx.category === 'penalty';
+    
+    // POSITIVE CONTRIBUTION MATH
+    const effectiveType = isPenalty ? 'deposit' : tx.type;
+
+    if (!isVoided) {
+      if (effectiveType === 'deposit') runningBalance += parseFloat(tx.amount);
+      if (effectiveType === 'withdrawal') runningBalance -= parseFloat(tx.amount);
     }
-    return { ...tx, runningBalance: runningBalance };
+    return { ...tx, runningBalance: runningBalance, effectiveType };
   }).reverse();
 
   if (loading) return <View style={styles.centered}><ActivityIndicator size="large" color={COLORS.primaryBlue} /></View>;
@@ -253,26 +270,35 @@ const LedgerScreen = ({ route, navigation }) => {
         <View style={styles.paperTable}>
           <View style={styles.tableHeaderRow}>
             <Text style={[styles.tableHeaderCell, { flex: 1.5 }]}>{t('ledger.date', 'Date')}</Text>
-            <Text style={[styles.tableHeaderCell, { flex: 2 }]}>{t('ledger.particulars', 'Particulars')}</Text>
-            <Text style={[styles.tableHeaderCell, { flex: 1.2, textAlign: 'right' }]}>{t('ledger.in', 'In (+)')}</Text>
-            <Text style={[styles.tableHeaderCell, { flex: 1.2, textAlign: 'right' }]}>{t('ledger.out', 'Out (-)')}</Text>
-            <Text style={[styles.tableHeaderCell, { flex: 1.5, textAlign: 'right' }]}>{t('ledger.bal', 'Bal')}</Text>
+            <Text style={[styles.tableHeaderCell, { flex: 2.5 }]}>{t('ledger.particulars', 'Particulars')}</Text>
+            <Text style={[styles.tableHeaderCell, { flex: 1.3, textAlign: 'right' }]}>{t('ledger.in', 'In (+)')}</Text>
+            <Text style={[styles.tableHeaderCell, { flex: 1.3, textAlign: 'right' }]}>{t('ledger.out', 'Out (-)')}</Text>
+            <Text style={[styles.tableHeaderCell, { flex: 1.8, textAlign: 'right' }]}>{t('ledger.bal', 'Bal')}</Text>
           </View>
 
           {ledgerRows.length > 0 ? ledgerRows.map((tx, index) => {
             const isVoided = tx.category === 'voided';
+            const isPenalty = tx.category === 'penalty';
             const dateObj = new Date(tx.transaction_date);
             const dateString = `${dateObj.getDate().toString().padStart(2, '0')}/${(dateObj.getMonth() + 1).toString().padStart(2, '0')}/${dateObj.getFullYear().toString().slice(-2)}`;
+            
             let particulars = tx.user?.name || tx.method || 'Record';
-            if (particulars.length > 10) particulars = particulars.substring(0, 9) + '..';
+            if (isPenalty) particulars += '\n(Fine)';
 
             return (
               <View key={index} style={[styles.tableRow, isVoided && { backgroundColor: '#fff5f5' }]}>
-                <Text style={[styles.tableCell, { flex: 1.5 }, isVoided && styles.voidedText]}>{dateString}</Text>
-                <Text style={[styles.tableCell, { flex: 2 }, isVoided && styles.voidedText]} numberOfLines={1}>{isVoided ? 'CANCEL' : particulars}</Text>
-                <Text style={[styles.tableCell, { flex: 1.2, textAlign: 'right', color: COLORS.success }, isVoided && styles.voidedText]}>{tx.type === 'deposit' ? `${tx.amount}` : '-'}</Text>
-                <Text style={[styles.tableCell, { flex: 1.2, textAlign: 'right', color: COLORS.danger }, isVoided && styles.voidedText]}>{tx.type === 'withdrawal' ? `${tx.amount}` : '-'}</Text>
-                <Text style={[styles.tableCell, { flex: 1.5, textAlign: 'right', fontWeight: 'bold' }, isVoided && styles.voidedText]}>₹{tx.runningBalance}</Text>
+                <Text style={[styles.tableCell, { flex: 1.5 }, isVoided && styles.voidedText]} numberOfLines={2}>{dateString}</Text>
+                <Text style={[styles.tableCell, { flex: 2.5 }, isVoided && styles.voidedText]} numberOfLines={3}>{isVoided ? 'CANCELLED' : particulars}</Text>
+                
+                <Text style={[styles.tableCell, { flex: 1.3, textAlign: 'right', color: COLORS.success }, isVoided && styles.voidedText]}>
+                  {tx.effectiveType === 'deposit' ? `${tx.amount}` : '-'}
+                </Text>
+                <Text style={[styles.tableCell, { flex: 1.3, textAlign: 'right', color: COLORS.danger }, isVoided && styles.voidedText]}>
+                  {tx.effectiveType === 'withdrawal' ? `${tx.amount}` : '-'}
+                </Text>
+                <Text style={[styles.tableCell, { flex: 1.8, textAlign: 'right', fontWeight: 'bold' }, isVoided && styles.voidedText]}>
+                  ₹{tx.runningBalance}
+                </Text>
               </View>
             );
           }) : (

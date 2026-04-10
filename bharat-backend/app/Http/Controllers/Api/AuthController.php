@@ -350,4 +350,30 @@ class AuthController extends Controller
             ], 500);
         }
     }
+    public function resetPassword(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email',
+            'otp' => 'required|numeric',
+            'new_password' => 'required|string|min:6'
+        ]);
+
+        $user = \App\Models\User::where('email', $request->email)->first();
+
+        if (!$user) {
+            return response()->json(['message' => 'User not found.'], 404);
+        }
+
+        // Verify the OTP
+        if ($user->otp !== $request->otp) {
+            return response()->json(['message' => 'Invalid or expired OTP.'], 400);
+        }
+
+        // Update Password and clear OTP
+        $user->password = \Illuminate\Support\Facades\Hash::make($request->new_password);
+        $user->otp = null; 
+        $user->save();
+
+        return response()->json(['status' => 'success', 'message' => 'Password reset successfully. You can now login.'], 200);
+    }
 }
