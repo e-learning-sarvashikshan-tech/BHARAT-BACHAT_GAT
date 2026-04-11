@@ -259,10 +259,6 @@ const DashboardScreen = ({ navigation }) => {
             <View style={[styles.actionIconBox, { backgroundColor: '#dcfce7' }]}><Ionicons name="help-circle" size={24} color="#16a34a" /></View>
             <Text style={styles.actionPillText}>{t('dashboard.faqHelp', 'FAQ / Help')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionPill} onPress={() => setAboutVisible(true)}>
-            <View style={[styles.actionIconBox, { backgroundColor: '#f3e8ff' }]}><Ionicons name="information-circle" size={24} color="#9333ea" /></View>
-            <Text style={styles.actionPillText}>{t('dashboard.aboutApp', 'About App')}</Text>
-          </TouchableOpacity>
         </ScrollView>
       </View>
 

@@ -1,6 +1,20 @@
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next'; 
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Share, Modal, TextInput, RefreshControl, Linking, Image } from 'react-native';
+import { 
+  View, 
+  Text, 
+  StyleSheet, 
+  TouchableOpacity, 
+  ScrollView, 
+  ActivityIndicator, 
+  Alert, 
+  Share, 
+  Modal, 
+  TextInput, 
+  RefreshControl, 
+  Linking, 
+  Image 
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -30,7 +44,14 @@ const CorpusDashboardCard = ({ groupId }) => {
 
   useFocusEffect(useCallback(() => { fetchCorpusStats(); }, [groupId]));
 
-  if (loading) return <View style={styles.loaderBox}><ActivityIndicator size="small" color={COLORS.primaryBlue} /></View>;
+  if (loading) {
+    return (
+      <View style={styles.loaderBox}>
+        <ActivityIndicator size="small" color={COLORS.primaryBlue} />
+      </View>
+    );
+  }
+  
   if (!stats) return null;
 
   const availableCash = Number(stats.live_corpus) || 0;
@@ -109,12 +130,30 @@ const GroupDetailsScreen = ({ route, navigation }) => {
   const [penaltyUser, setPenaltyUser] = useState(null);
   const [penaltyAmount, setPenaltyAmount] = useState('');
   const [penaltyReason, setPenaltyReason] = useState('');
+  const [penaltyReasonMode, setPenaltyReasonMode] = useState(''); 
   const [submittingPenalty, setSubmittingPenalty] = useState(false);
 
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [deletingTxId, setDeletingTxId] = useState(null);
   const [deleteReason, setDeleteReason] = useState('');
+  const [deleteReasonMode, setDeleteReasonMode] = useState(''); 
   const [submittingDelete, setSubmittingDelete] = useState(false);
+
+  const FINE_REASONS = [
+    t('quickReasons.late', 'Late to Meeting'), 
+    t('quickReasons.missed', 'Missed Saving'), 
+    t('quickReasons.rules', 'Rule Violation'), 
+    t('quickReasons.behavior', 'Disruptive Behavior'), 
+    t('quickReasons.other', 'Other')
+  ];
+
+  const VOID_REASONS = [
+    t('quickReasons.typo', 'Typo in Amount'), 
+    t('quickReasons.wrongMember', 'Wrong Member Selected'), 
+    t('quickReasons.cashNotRec', 'Cash Not Received'), 
+    t('quickReasons.duplicate', 'Duplicate Entry'), 
+    t('quickReasons.other', 'Other')
+  ];
 
   const fetchGroupData = useCallback(async () => {
     try {
@@ -162,7 +201,8 @@ const GroupDetailsScreen = ({ route, navigation }) => {
 
   const sendWhatsAppReceipt = (tx) => {
     const isDeposit = tx.type === 'deposit';
-    const actionText = isDeposit ? t('common.deposit', 'Deposit') : t('common.withdrawal', 'Withdrawal');
+    const isPenalty = tx.category === 'penalty';
+    const actionText = isPenalty ? 'Fine/Penalty Paid' : (isDeposit ? t('common.deposit', 'Deposit') : t('common.withdrawal', 'Withdrawal'));
     const symbol = isDeposit ? '🟢' : '🔴';
     const memberName = tx.user?.name || t('groupDetails.roleMember', 'Member');
     const dateFormatted = new Date(tx.transaction_date).toLocaleDateString('en-IN');
@@ -180,7 +220,7 @@ const GroupDetailsScreen = ({ route, navigation }) => {
 
   const sendMeetingReminder = () => {
     const groupName = groupDetails?.name || 'Bachat Gat';
-    const message = t('whatsapp.meetingReminder', { groupName: groupName }); // <-- TRANSLATED WHATSAPP MSG
+    const message = t('whatsapp.meetingReminder', { groupName: groupName });
 
     const whatsappUrl = `whatsapp://send?text=${encodeURIComponent(message)}`;
     Linking.canOpenURL(whatsappUrl).then((supported) => {
@@ -288,18 +328,33 @@ const GroupDetailsScreen = ({ route, navigation }) => {
   const triggerPenaltyModal = () => {
     setPenaltyUser(selectedMember); 
     setPenaltyAmount('');
+    setPenaltyReasonMode('');
     setPenaltyReason('');
     setPenaltyModalVisible(true);
   };
 
   const handleChargePenalty = async () => {
-    if (!penaltyAmount || isNaN(penaltyAmount) || Number(penaltyAmount) <= 0) return Alert.alert(t('common.error', "Error"), t('alerts.invalidAmountError', "Enter a valid amount."));
-    if (!penaltyReason.trim()) return Alert.alert(t('common.error', "Error"), t('alerts.reasonRequired', "Please enter a reason for the fine."));
+    if (!penaltyAmount || isNaN(penaltyAmount) || Number(penaltyAmount) <= 0) {
+      return Alert.alert(t('common.error', "Error"), t('alerts.invalidAmountError', "Enter a valid amount."));
+    }
+    if (!penaltyReasonMode) {
+      return Alert.alert(t('common.error', "Error"), "Please select a reason.");
+    }
+    if (penaltyReasonMode === 'custom' && !penaltyReason.trim()) {
+      return Alert.alert(t('common.error', "Error"), t('alerts.reasonRequired', "Please enter a reason for the fine."));
+    }
 
     setSubmittingPenalty(true);
     try {
       const token = await SecureStore.getItemAsync('userToken');
-      await api.post(`/group/${groupId}/penalty`, { user_id: penaltyUser.id, amount: Number(penaltyAmount), reason: penaltyReason }, { headers: { Authorization: `Bearer ${token}` } });
+      await api.post(`/group/${groupId}/penalty`, { 
+        user_id: penaltyUser.id, 
+        amount: Number(penaltyAmount), 
+        reason: penaltyReason 
+      }, { 
+        headers: { Authorization: `Bearer ${token}` } 
+      });
+      
       Alert.alert(t('common.success', "Success"), t('alerts.fineSuccess', "Fine charged and added to Corpus!"));
       setPenaltyModalVisible(false);
       fetchGroupData(); 
@@ -312,16 +367,26 @@ const GroupDetailsScreen = ({ route, navigation }) => {
 
   const triggerDeleteModal = (txId) => {
     setDeletingTxId(txId);
+    setDeleteReasonMode('');
     setDeleteReason('');
     setDeleteModalVisible(true);
   };
 
   const confirmDeleteTransaction = async () => {
-    if (!deleteReason.trim()) return Alert.alert(t('common.error', "Error"), t('alerts.reasonRequired', "You must provide a reason for voiding this record."));
+    if (!deleteReasonMode) {
+      return Alert.alert(t('common.error', "Error"), "Please select a reason.");
+    }
+    if (deleteReasonMode === 'custom' && !deleteReason.trim()) {
+      return Alert.alert(t('common.error', "Error"), t('alerts.reasonRequired', "You must provide a reason for voiding this record."));
+    }
+    
     setSubmittingDelete(true);
     try {
       const token = await SecureStore.getItemAsync('userToken');
-      await api.delete(`/transactions/${deletingTxId}`, { headers: { Authorization: `Bearer ${token}` }, data: { delete_reason: deleteReason } });
+      await api.delete(`/transactions/${deletingTxId}`, { 
+        headers: { Authorization: `Bearer ${token}` }, 
+        data: { delete_reason: deleteReason } 
+      });
       Alert.alert(t('common.success', "Success"), t('alerts.voidSuccess', "Transaction securely voided."));
       setDeleteModalVisible(false);
       fetchGroupData(); 
@@ -332,7 +397,13 @@ const GroupDetailsScreen = ({ route, navigation }) => {
     }
   };
 
-  if (loading || !groupDetails) return <View style={styles.centered}><ActivityIndicator size="large" color={COLORS.primaryBlue} /></View>;
+  if (loading || !groupDetails) {
+    return (
+      <View style={styles.centered}>
+        <ActivityIndicator size="large" color={COLORS.primaryBlue} />
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -345,7 +416,10 @@ const GroupDetailsScreen = ({ route, navigation }) => {
         </Text>
       </View>
 
-      <ScrollView style={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primaryBlue]} />}>
+      <ScrollView 
+        style={styles.content} 
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primaryBlue]} />}
+      >
         <CorpusDashboardCard groupId={groupId} />
 
         <View style={styles.overviewCard}>
@@ -381,29 +455,39 @@ const GroupDetailsScreen = ({ route, navigation }) => {
 
         <View style={styles.actionGrid}>
           <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Members', { groupId: groupId, role: role, groupDetails: groupDetails })}>
-            <View style={styles.iconCircle}><Ionicons name="people-outline" size={24} color={COLORS.primaryBlue} /></View>
+            <View style={styles.iconCircle}>
+              <Ionicons name="people-outline" size={24} color={COLORS.primaryBlue} />
+            </View>
             <Text style={styles.actionText}>{t('groupDetails.btnMembers', 'Members')}</Text>
           </TouchableOpacity>
           
           <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('AddMeetingRecords', { groupId: groupId, role: role })}>
-            <View style={styles.iconCircle}><Ionicons name="calendar-outline" size={24} color={COLORS.primaryBlue} /></View>
+            <View style={styles.iconCircle}>
+              <Ionicons name="calendar-outline" size={24} color={COLORS.primaryBlue} />
+            </View>
             <Text style={styles.actionText}>{t('groupDetails.btnMeeting', 'Record Meeting')}</Text>
           </TouchableOpacity>
           
           <TouchableOpacity style={styles.actionButton} onPress={() => navigation.navigate('Ledger', { groupId: groupId })}>
-            <View style={styles.iconCircle}><Ionicons name="book-outline" size={24} color={COLORS.primaryBlue} /></View>
+            <View style={styles.iconCircle}>
+              <Ionicons name="book-outline" size={24} color={COLORS.primaryBlue} />
+            </View>
             <Text style={styles.actionText}>{t('groupDetails.btnPassbook', 'Passbook')}</Text>
           </TouchableOpacity>
         </View>
 
         <TouchableOpacity style={styles.historyBtn} onPress={() => navigation.navigate('MeetingHistory', { groupId: groupId, members: members })}>
           <Ionicons name="time" size={20} color={COLORS.primaryBlue} style={{ marginRight: 8 }} />
-          <Text style={{ color: COLORS.primaryBlue, fontWeight: 'bold', fontSize: 15 }}>{t('groupDetails.viewHistory', 'View Past Records & Attendance')}</Text>
+          <Text style={{ color: COLORS.primaryBlue, fontWeight: 'bold', fontSize: 15 }}>
+            {t('groupDetails.viewHistory', 'View Past Records & Attendance')}
+          </Text>
         </TouchableOpacity>
 
         {isAdmin && pendingMembers.length > 0 && (
           <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: COLORS.warning }]}>{t('groupDetails.pendingApprovals', 'Pending Approvals')} ({pendingMembers.length})</Text>
+            <Text style={[styles.sectionTitle, { color: COLORS.warning }]}>
+              {t('groupDetails.pendingApprovals', 'Pending Approvals')} ({pendingMembers.length})
+            </Text>
             {pendingMembers.map((user) => (
               <View key={user.id} style={styles.memberCard}>
                 <View style={{ flex: 1 }}>
@@ -419,13 +503,21 @@ const GroupDetailsScreen = ({ route, navigation }) => {
         )}
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('groupDetails.installmentStatus', 'Installment Status')} ({currentMonthName})</Text>
+          <Text style={styles.sectionTitle}>
+            {t('groupDetails.installmentStatus', 'Installment Status')} ({currentMonthName})
+          </Text>
           {members.map((user) => {
             const isPaid = user.installment_status === 'Paid';
             const isUserAdmin = user.pivot.role === 'admin';
             const isCreator = groupDetails?.created_by === user.id; 
+            
             return (
-              <TouchableOpacity key={user.id} style={[styles.memberCard, { flexDirection: 'column', alignItems: 'stretch' }]} activeOpacity={isAdmin && !isCreator ? 0.6 : 1} onPress={() => { if (isAdmin && !isCreator) openActionSheet(user); }}>
+              <TouchableOpacity 
+                key={user.id} 
+                style={[styles.memberCard, { flexDirection: 'column', alignItems: 'stretch' }]} 
+                activeOpacity={isAdmin && !isCreator ? 0.6 : 1} 
+                onPress={() => { if (isAdmin && !isCreator) openActionSheet(user); }}
+              >
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                   <View style={[styles.avatarCircle, { overflow: 'hidden' }]}>
                     {user?.profile_photo_url ? (
@@ -440,7 +532,9 @@ const GroupDetailsScreen = ({ route, navigation }) => {
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
                     <View style={[styles.statusBadge, isPaid ? styles.badgePaid : styles.badgePending]}>
-                      <Text style={[styles.statusBadgeText, isPaid ? styles.textPaid : styles.textPending]}>{isPaid ? t('groupDetails.statusPaid', 'PAID') : t('groupDetails.statusPending', 'PENDING')}</Text>
+                      <Text style={[styles.statusBadgeText, isPaid ? styles.textPaid : styles.textPending]}>
+                        {isPaid ? t('groupDetails.statusPaid', 'PAID') : t('groupDetails.statusPending', 'PENDING')}
+                      </Text>
                     </View>
                     <Text style={styles.paidAmountText}>₹{user.current_month_paid} / ₹{groupDetails?.monthly_contribution}</Text>
                   </View>
@@ -457,6 +551,14 @@ const GroupDetailsScreen = ({ route, navigation }) => {
               recentTransactions.map((tx, index) => {
                 const isVoided = tx.category === 'voided';
                 const isEdited = tx.method && tx.method.includes('[Edited:');
+                const isPenalty = tx.category === 'penalty';
+                
+                // --- THE FIX: POSITIVE CONTRIBUTION LOGIC FOR FINES ---
+                // Fines are treated as money coming IN to the group box, so they are green +
+                const visualType = isPenalty ? 'deposit' : tx.type; 
+                const sign = visualType === 'deposit' ? '+' : '-';
+                const amountColor = isVoided ? '#999' : (visualType === 'deposit' ? COLORS.success : COLORS.danger);
+
                 return (
                   <View key={index} style={[styles.transactionItem, isVoided && { backgroundColor: '#fff5f5' }]}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%' }}>
@@ -476,11 +578,19 @@ const GroupDetailsScreen = ({ route, navigation }) => {
                       </View>
                       
                       <View style={{ alignItems: 'flex-end' }}>
-                        <Text style={[styles.txAmount, { color: isVoided ? '#999' : (tx.type === 'deposit' ? COLORS.success : COLORS.danger) }, isVoided && { textDecorationLine: 'line-through' }]}>
-                          {tx.type === 'deposit' ? '+' : '-'}₹{isVoided ? '0' : tx.amount}
+                        <Text style={[styles.txAmount, { color: amountColor }, isVoided && { textDecorationLine: 'line-through' }]}>
+                          {sign}₹{isVoided ? '0' : tx.amount}
                         </Text>
-                        {tx.category === 'penalty' && <Text style={{fontSize: 10, color: COLORS.warning, fontWeight: 'bold', marginTop: 2}}>{t('groupDetails.fineTag', 'FINE')}</Text>}
-                        {isVoided && <Text style={{fontSize: 10, color: COLORS.danger, fontWeight: 'bold', marginTop: 2}}>{t('dashboard.voidedTag', 'CANCELLED').toUpperCase()}</Text>}
+                        {isPenalty && (
+                          <Text style={{fontSize: 10, color: COLORS.warning, fontWeight: 'bold', marginTop: 2}}>
+                            {t('groupDetails.fineTag', 'FINE')}
+                          </Text>
+                        )}
+                        {isVoided && (
+                          <Text style={{fontSize: 10, color: COLORS.danger, fontWeight: 'bold', marginTop: 2}}>
+                            {t('dashboard.voidedTag', 'CANCELLED').toUpperCase()}
+                          </Text>
+                        )}
                         
                         {isAdmin && !isVoided && (
                           <View style={{ flexDirection: 'row', marginTop: 10 }}>
@@ -498,13 +608,18 @@ const GroupDetailsScreen = ({ route, navigation }) => {
                 )
               })
             ) : (
-              <Text style={{ textAlign: 'center', color: COLORS.textMuted, padding: 15 }}>{t('dashboard.noTransactions', 'No transactions recorded yet.')}</Text>
+              <Text style={{ textAlign: 'center', color: COLORS.textMuted, padding: 15 }}>
+                {t('dashboard.noTransactions', 'No transactions recorded yet.')}
+              </Text>
             )}
           </View>
         </View>
 
         {isAdmin && (
-           <TouchableOpacity style={{ backgroundColor: '#fff5f5', padding: 15, borderRadius: 12, alignItems: 'center', marginTop: 10, marginBottom: 20, borderWidth: 1, borderColor: '#ffe6e6' }} onPress={handleDeleteGroup}>
+           <TouchableOpacity 
+             style={{ backgroundColor: '#fff5f5', padding: 15, borderRadius: 12, alignItems: 'center', marginTop: 10, marginBottom: 20, borderWidth: 1, borderColor: '#ffe6e6' }} 
+             onPress={handleDeleteGroup}
+           >
             <Text style={{ color: COLORS.danger, fontWeight: 'bold' }}>{t('groupDetails.deleteGroupBtn', 'Delete This Group')}</Text>
            </TouchableOpacity>
         )}
@@ -512,20 +627,25 @@ const GroupDetailsScreen = ({ route, navigation }) => {
       </ScrollView>
 
       <View style={{ padding: 15, backgroundColor: COLORS.bgWhite, borderTopWidth: 1, borderTopColor: COLORS.borderLight, flexDirection: 'row', gap: 10 }}>
-        <TouchableOpacity style={{ flex: 1, backgroundColor: COLORS.warning, flexDirection: 'row', padding: 15, borderRadius: 12, justifyContent: 'center', alignItems: 'center', elevation: 2 }} onPress={() => navigation.navigate('LoanHub', { groupId: groupId, role: role, groupDetails: groupDetails })}>
+        <TouchableOpacity 
+          style={{ flex: 1, backgroundColor: COLORS.warning, flexDirection: 'row', padding: 15, borderRadius: 12, justifyContent: 'center', alignItems: 'center', elevation: 2 }} 
+          onPress={() => navigation.navigate('LoanHub', { groupId: groupId, role: role, groupDetails: groupDetails })}
+        >
           <Ionicons name="cash-outline" size={20} color={COLORS.bgWhite} style={{ marginRight: 6 }}/>
           <Text style={{ color: COLORS.bgWhite, fontSize: 14, fontWeight: 'bold' }}>{t('groupDetails.manageLoansBtn', 'Manage Loans')}</Text>
         </TouchableOpacity>
 
         {isAdmin && (
-          <TouchableOpacity style={{ flex: 1, backgroundColor: COLORS.primaryBlue, flexDirection: 'row', padding: 15, borderRadius: 12, justifyContent: 'center', alignItems: 'center', elevation: 2 }} onPress={() => navigation.navigate('AddSavings', { groupId: groupId, members: members })}>
+          <TouchableOpacity 
+            style={{ flex: 1, backgroundColor: COLORS.primaryBlue, flexDirection: 'row', padding: 15, borderRadius: 12, justifyContent: 'center', alignItems: 'center', elevation: 2 }} 
+            onPress={() => navigation.navigate('AddSavings', { groupId: groupId, members: members })}
+          >
             <Ionicons name="add-circle" size={20} color={COLORS.bgWhite} style={{ marginRight: 6 }}/>
             <Text style={{ color: COLORS.bgWhite, fontSize: 14, fontWeight: 'bold' }}>{t('groupDetails.addSavingsBtn', 'Collect Savings')}</Text>
           </TouchableOpacity>
         )}
       </View>
 
-      {/* MODALS */}
       <Modal visible={actionSheetVisible} transparent={true} animationType="slide">
         <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={() => setActionSheetVisible(false)}>
           <View style={styles.actionSheet}>
@@ -562,11 +682,66 @@ const GroupDetailsScreen = ({ route, navigation }) => {
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t('groupDetails.chargeFineTitle', 'Add Fine / Penalty')}</Text>
             <Text style={{color: COLORS.textGray, marginBottom: 15}}>Charging <Text style={{fontWeight: 'bold', color: COLORS.textDark}}>{penaltyUser?.name}</Text></Text>
-            <TextInput style={[styles.modalInput, { height: 50, fontSize: 18, fontWeight: 'bold' }]} keyboardType="numeric" value={penaltyAmount} onChangeText={setPenaltyAmount} placeholder={t('groupDetails.amountPlaceholder', 'Amount (e.g. ₹50)')} />
-            <TextInput style={styles.modalInput} value={penaltyReason} onChangeText={setPenaltyReason} placeholder={t('groupDetails.reasonPlaceholder', 'Reason (e.g. Late for meeting)')} />
+            
+            <TextInput 
+              style={[styles.modalInput, { height: 50, fontSize: 18, fontWeight: 'bold' }]} 
+              keyboardType="numeric" 
+              value={penaltyAmount} 
+              onChangeText={setPenaltyAmount} 
+              placeholder={t('groupDetails.amountPlaceholder', 'Amount (e.g. ₹50)')} 
+            />
+            
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10, marginTop: 15 }}>
+              {FINE_REASONS.map((reason, index) => {
+                const isSelected = penaltyReasonMode === 'chip' && penaltyReason === reason;
+                const isOther = reason === t('quickReasons.other', 'Other');
+                const isOtherSelected = isOther && penaltyReasonMode === 'custom';
+                return (
+                  <TouchableOpacity
+                    key={index}
+                    style={{ 
+                      backgroundColor: isSelected || isOtherSelected ? COLORS.primaryBlue : COLORS.bgLight, 
+                      paddingHorizontal: 15, 
+                      paddingVertical: 8, 
+                      borderRadius: 20, 
+                      marginRight: 10, 
+                      borderWidth: 1, 
+                      borderColor: isSelected || isOtherSelected ? COLORS.primaryBlue : COLORS.borderLight 
+                    }}
+                    onPress={() => {
+                      if (isOther) {
+                        setPenaltyReasonMode('custom');
+                        setPenaltyReason('');
+                      } else {
+                        setPenaltyReasonMode('chip');
+                        setPenaltyReason(reason);
+                      }
+                    }}
+                  >
+                    <Text style={{ color: isSelected || isOtherSelected ? COLORS.bgWhite : COLORS.textGray, fontSize: 13, fontWeight: 'bold' }}>{reason}</Text>
+                  </TouchableOpacity>
+                )
+              })}
+            </ScrollView>
+
+            {penaltyReasonMode === 'custom' && (
+              <TextInput 
+                style={styles.modalInput} 
+                value={penaltyReason} 
+                onChangeText={setPenaltyReason} 
+                placeholder="Type custom reason..." 
+              />
+            )}
+            
             <View style={styles.modalActionRow}>
-              <TouchableOpacity onPress={() => setPenaltyModalVisible(false)} style={{padding: 10}}><Text style={{color: COLORS.textDark}}>{t('common.cancel', 'Cancel')}</Text></TouchableOpacity>
-              <TouchableOpacity onPress={handleChargePenalty} disabled={submittingPenalty} style={[styles.modalSubmitBtn, {backgroundColor: COLORS.warning}]}>
+              <TouchableOpacity onPress={() => setPenaltyModalVisible(false)} style={{padding: 10}}>
+                <Text style={{color: COLORS.textDark}}>{t('common.cancel', 'Cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                onPress={handleChargePenalty} 
+                disabled={submittingPenalty} 
+                style={[styles.modalSubmitBtn, {backgroundColor: COLORS.warning}]}
+              >
                 {submittingPenalty ? <ActivityIndicator color={COLORS.bgWhite} /> : <Text style={{color: COLORS.bgWhite, fontWeight: 'bold'}}>{t('common.submit', 'Charge Fine')}</Text>}
               </TouchableOpacity>
             </View>
@@ -579,9 +754,54 @@ const GroupDetailsScreen = ({ route, navigation }) => {
           <View style={styles.modalContent}>
             <Text style={[styles.modalTitle, {color: COLORS.danger}]}>{t('alerts.voidPrompt', 'Void Transaction')}</Text>
             <Text style={{color: COLORS.textGray, marginBottom: 15}}>You are about to cancel this transaction. It will remain in the logs as 'Voided' for audit purposes.</Text>
-            <TextInput style={[styles.modalInput, { height: 80, borderColor: COLORS.danger, borderWidth: 1 }]} value={deleteReason} onChangeText={setDeleteReason} placeholder="Enter reason for voiding (Required)" multiline />
+            
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+              {VOID_REASONS.map((reason, index) => {
+                const isSelected = deleteReasonMode === 'chip' && deleteReason === reason;
+                const isOther = reason === t('quickReasons.other', 'Other');
+                const isOtherSelected = isOther && deleteReasonMode === 'custom';
+                return (
+                  <TouchableOpacity
+                    key={index}
+                    style={{ 
+                      backgroundColor: isSelected || isOtherSelected ? COLORS.primaryBlue : COLORS.bgLight, 
+                      paddingHorizontal: 15, 
+                      paddingVertical: 8, 
+                      borderRadius: 20, 
+                      marginRight: 10, 
+                      borderWidth: 1, 
+                      borderColor: isSelected || isOtherSelected ? COLORS.primaryBlue : COLORS.borderLight 
+                    }}
+                    onPress={() => {
+                      if (isOther) {
+                        setDeleteReasonMode('custom');
+                        setDeleteReason('');
+                      } else {
+                        setDeleteReasonMode('chip');
+                        setDeleteReason(reason);
+                      }
+                    }}
+                  >
+                    <Text style={{ color: isSelected || isOtherSelected ? COLORS.bgWhite : COLORS.textGray, fontSize: 13, fontWeight: 'bold' }}>{reason}</Text>
+                  </TouchableOpacity>
+                )
+              })}
+            </ScrollView>
+
+            {deleteReasonMode === 'custom' && (
+              <TextInput 
+                style={[styles.modalInput, { height: 80, borderColor: COLORS.danger, borderWidth: 1 }]} 
+                value={deleteReason} 
+                onChangeText={setDeleteReason} 
+                placeholder="Type custom reason..." 
+                multiline 
+              />
+            )}
+            
             <View style={styles.modalActionRow}>
-              <TouchableOpacity onPress={() => setDeleteModalVisible(false)} style={{padding: 10}}><Text style={{color: COLORS.textDark}}>{t('common.cancel', 'Cancel')}</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => setDeleteModalVisible(false)} style={{padding: 10}}>
+                <Text style={{color: COLORS.textDark}}>{t('common.cancel', 'Cancel')}</Text>
+              </TouchableOpacity>
               <TouchableOpacity onPress={confirmDeleteTransaction} disabled={submittingDelete} style={[styles.modalSubmitBtn, {backgroundColor: COLORS.danger}]}>
                 {submittingDelete ? <ActivityIndicator color={COLORS.bgWhite} /> : <Text style={{color: COLORS.bgWhite, fontWeight: 'bold'}}>{t('common.submit', 'Void Record')}</Text>}
               </TouchableOpacity>
@@ -597,7 +817,7 @@ const GroupDetailsScreen = ({ route, navigation }) => {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bgLight },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { flexDirection: 'row', alignItems: 'center', padding: 20, backgroundColor: COLORS.bgWhite, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
+  header: { flexDirection: 'row', alignItems: 'center', padding: 20, paddingTop: 10, backgroundColor: COLORS.bgWhite, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
   backButton: { marginRight: 15 },
   headerTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.textDark, flex: 1 }, 
   content: { padding: 20 },
@@ -668,7 +888,7 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   modalContent: { backgroundColor: COLORS.bgWhite, width: '85%', padding: 20, borderRadius: 16 },
   modalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10 },
-  modalInput: { backgroundColor: COLORS.bgLight, borderRadius: 8, padding: 10, marginTop: 10, color: COLORS.textDark },
+  modalInput: { backgroundColor: COLORS.bgLight, borderRadius: 8, padding: 10, marginTop: 5, color: COLORS.textDark, borderWidth: 1, borderColor: COLORS.borderLight },
   modalActionRow: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 20, alignItems: 'center', gap: 10 },
   modalSubmitBtn: { padding: 10, borderRadius: 8, paddingHorizontal: 20 },
 

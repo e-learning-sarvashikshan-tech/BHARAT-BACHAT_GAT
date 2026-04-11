@@ -17,7 +17,7 @@ use App\Http\Controllers\Api\NotificationController;
 Route::post('/send-otp', [AuthController::class, 'sendOtp']);
 Route::post('/verify-otp', [AuthController::class, 'verifyOtp']);
 Route::post('/login-password', [AuthController::class, 'loginWithPassword']); 
-
+Route::post('/register', [AuthController::class, 'register']);
 /*
 |--------------------------------------------------------------------------
 | Protected Routes (Token Required)

@@ -14,6 +14,32 @@ use App\Mail\OtpMail;
 
 class AuthController extends Controller
 {
+    // 0. STANDALONE REGISTER
+    public function register(Request $request)
+    {
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users',
+            'phone' => 'required|digits:10|unique:users',
+            'password' => 'required|string|min:6',
+        ]);
+
+        $user = User::create([
+            'name' => $request->name,
+            'email' => $request->email,
+            'phone' => $request->phone,
+            'password' => Hash::make($request->password),
+        ]);
+
+        $token = $user->createToken('auth_token')->plainTextToken;
+
+        return response()->json([
+            'message' => 'Registration successful',
+            'access_token' => $token,
+            'user' => $user
+        ], 201);
+    }
+    
     // 1. Send OTP
     public function sendOtp(Request $request)
     {
@@ -349,5 +375,31 @@ class AuthController extends Controller
                 'message' => 'Failed to delete account: ' . $e->getMessage()
             ], 500);
         }
+    }
+    public function resetPassword(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email',
+            'otp' => 'required|numeric',
+            'new_password' => 'required|string|min:6'
+        ]);
+
+        $user = \App\Models\User::where('email', $request->email)->first();
+
+        if (!$user) {
+            return response()->json(['message' => 'User not found.'], 404);
+        }
+
+        // Verify the OTP
+        if ($user->otp !== $request->otp) {
+            return response()->json(['message' => 'Invalid or expired OTP.'], 400);
+        }
+
+        // Update Password and clear OTP
+        $user->password = \Illuminate\Support\Facades\Hash::make($request->new_password);
+        $user->otp = null; 
+        $user->save();
+
+        return response()->json(['status' => 'success', 'message' => 'Password reset successfully. You can now login.'], 200);
     }
 }

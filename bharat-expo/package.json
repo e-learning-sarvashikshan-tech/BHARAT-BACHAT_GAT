@@ -22,6 +22,7 @@
     "expo-file-system": "~19.0.21",
     "expo-image-picker": "~17.0.10",
     "expo-linear-gradient": "~15.0.8",
+    "expo-local-authentication": "~17.0.8",
     "expo-notifications": "~0.32.16",
     "expo-print": "~15.0.8",
     "expo-secure-store": "~15.0.8",

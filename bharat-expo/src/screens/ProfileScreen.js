@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   View,
@@ -13,7 +13,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Image,
-  Linking // <-- NEEDED FOR EMAIL
+  Linking 
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,9 +25,17 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Print from 'expo-print';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
-import { Asset } from 'expo-asset'; // <-- NEW: NEEDED FOR LOCAL PDF IMAGES
+import { Asset } from 'expo-asset'; 
 import api from '../services/api';
 import { COLORS } from '../constants/theme';
+
+const LANGUAGES = [
+  { code: 'en', label: 'English' }, { code: 'hi', label: 'Hindi (हिंदी)' }, { code: 'mr', label: 'Marathi (मराठी)' },
+  { code: 'gu', label: 'Gujarati (ગુજરાતી)' }, { code: 'ta', label: 'Tamil (தமிழ்)' }, { code: 'te', label: 'Telugu (తెలుగు)' },
+  { code: 'kn', label: 'Kannada (ಕನ್ನಡ)' }, { code: 'ml', label: 'Malayalam (മലയാളം)' }, { code: 'bn', label: 'Bengali (বাংলা)' },
+  { code: 'pa', label: 'Punjabi (ਪੰਜਾਬੀ)' }, { code: 'or', label: 'Odia (ଓଡ଼ିଆ)' }, { code: 'as', label: 'Assamese (অসমীয়া)' },
+  { code: 'ur', label: 'Urdu (اردو)' }
+];
 
 const ProfileScreen = ({ navigation }) => {
   const { t, i18n } = useTranslation();
@@ -40,7 +48,6 @@ const ProfileScreen = ({ navigation }) => {
   const [isDeletingAccount, setIsDeletingAccount] = useState(false);
 
   const [fullScreenImage, setFullScreenImage] = useState(false);
-
   const [langModalVisible, setLangModalVisible] = useState(false);
   const profileCardRef = useRef();
 
@@ -56,7 +63,13 @@ const ProfileScreen = ({ navigation }) => {
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
 
   const [helpModalVisible, setHelpModalVisible] = useState(false);
+  const [aboutModalVisible, setAboutModalVisible] = useState(false); 
   const [expandedFaq, setExpandedFaq] = useState(null);
+
+  const [verifyModalVisible, setVerifyModalVisible] = useState(false);
+  const [emailOtp, setEmailOtp] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [resendTimer, setResendTimer] = useState(0);
 
   const fetchUserProfile = async () => {
     try {
@@ -74,12 +87,50 @@ const ProfileScreen = ({ navigation }) => {
 
   useFocusEffect(useCallback(() => { fetchUserProfile(); }, []));
 
+  useEffect(() => {
+    let interval = null;
+    if (resendTimer > 0) {
+      interval = setInterval(() => {
+        setResendTimer(resendTimer => resendTimer - 1);
+      }, 1000);
+    } else if (resendTimer === 0 && interval) {
+      clearInterval(interval);
+    }
+    return () => clearInterval(interval);
+  }, [resendTimer]);
+
+  const requestVerificationOtp = async () => {
+    try {
+      const token = await SecureStore.getItemAsync('userToken');
+      await api.post('/send-otp', { email: userData.email }, { headers: { Authorization: `Bearer ${token}` } });
+      Alert.alert("OTP Sent", "Please check your email for the verification code.");
+      setResendTimer(90);
+      setVerifyModalVisible(true);
+    } catch (error) {
+      Alert.alert("Error", "Failed to send verification email. Please try again later.");
+    }
+  };
+
+  const submitVerificationOtp = async () => {
+    if (emailOtp.length !== 4) return Alert.alert("Error", "Please enter a valid 4-digit OTP.");
+    setIsVerifying(true);
+    try {
+      const token = await SecureStore.getItemAsync('userToken');
+      await api.post('/verify-email-otp', { email: userData.email, otp: Number(emailOtp) }, { headers: { Authorization: `Bearer ${token}` } });
+      
+      Alert.alert("Success", "Your email is now verified!");
+      setVerifyModalVisible(false);
+      fetchUserProfile(); 
+    } catch (error) {
+      Alert.alert("Error", "Invalid OTP. Please try again.");
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
   const handlePickImage = async () => {
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (permissionResult.granted === false) {
-      Alert.alert(t('common.error', 'Permission Required'), 'You need to allow camera roll access to upload a photo.');
-      return;
-    }
+    if (permissionResult.granted === false) return Alert.alert(t('common.error', 'Permission Required'), 'You need to allow camera roll access to upload a photo.');
     let pickerResult = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, aspect: [1, 1], quality: 0.5 });
     if (!pickerResult.canceled) uploadProfileImage(pickerResult.assets[0].uri);
   };
@@ -178,23 +229,33 @@ const ProfileScreen = ({ navigation }) => {
       let totalWithdrawn = 0;
 
       filteredTransactions.forEach((tx) => {
-        const date = new Date(tx.transaction_date).toLocaleDateString();
-        const typeColor = tx.type === 'deposit' ? COLORS.success : COLORS.danger;
-        const sign = tx.type === 'deposit' ? '+' : '-';
-        if (tx.type === 'deposit' && tx.category !== 'voided') totalDeposited += parseFloat(tx.amount);
-        if (tx.type === 'withdrawal' && tx.category !== 'voided') totalWithdrawn += parseFloat(tx.amount);
+        const dateObj = new Date(tx.transaction_date);
+        const formattedDate = `${dateObj.getDate().toString().padStart(2, '0')}/${(dateObj.getMonth()+1).toString().padStart(2, '0')}/${dateObj.getFullYear()}`;
+        
+        // POSITIVE CONTRIBUTION MATH
+        const isPenalty = tx.category === 'penalty';
+        const effectiveType = isPenalty ? 'deposit' : tx.type; 
+
+        const typeColor = effectiveType === 'deposit' ? COLORS.success : COLORS.danger;
+        const sign = effectiveType === 'deposit' ? '+' : '-';
+        
+        if (effectiveType === 'deposit' && tx.category !== 'voided') totalDeposited += parseFloat(tx.amount);
+        if (effectiveType === 'withdrawal' && tx.category !== 'voided') totalWithdrawn += parseFloat(tx.amount);
+
+        let groupNameDisplay = tx.group?.name || 'Manual';
+        let particulars = tx.method || 'Transfer';
+        if (isPenalty) particulars += ' (Fine)';
 
         tableRows += `
             <tr>
-              <td>${date}</td>
-              <td>${tx.group?.name || 'Manual'}</td>
-              <td>${tx.method || 'Transfer'}</td>
+              <td>${formattedDate}</td>
+              <td>${groupNameDisplay}</td>
+              <td>${particulars}</td>
               <td style="color: ${typeColor}; font-weight: bold; text-align: right;">${sign}₹${tx.amount}</td>
             </tr>
           `;
       });
 
-      // --- NEW: FETCH LOCAL LOGO AND CONVERT TO BASE64 FOR PDF ---
       let base64Logo = '';
       try {
         const asset = Asset.fromModule(require('../../assets/logo.png'));
@@ -209,32 +270,31 @@ const ProfileScreen = ({ navigation }) => {
         <html>
           <head>
             <style>
-              body { font-family: 'Courier New', Courier, monospace; padding: 40px; color: #333; background-color: #fdfbf7; }
-              .header { text-align: center; border-bottom: 2px solid #d1c7a3; padding-bottom: 20px; margin-bottom: 30px; }
-              .logo-img { height: 60px; margin-bottom: 10px; } 
-              .logo { font-size: 32px; font-weight: 900; color: ${COLORS.primaryBlue}; margin: 0; text-transform: uppercase; }
-              .powered-by { font-size: 10px; color: #777; font-weight: bold; letter-spacing: 1px; margin-top: 2px; margin-bottom: 10px; text-transform: uppercase; }
-              .sub-logo { font-size: 14px; font-weight: bold; color: #5c5442; margin-top: 15px; letter-spacing: 2px; }
-              .user-details { text-align: center; font-size: 18px; font-weight: bold; color: #333; margin-top: 10px; }
-              .summary-box { background-color: #efeadd; padding: 20px; border-radius: 8px; margin-bottom: 30px; display: flex; justify-content: space-between; border: 1px solid #d1c7a3; }
+              body { font-family: 'Courier New', Courier, monospace; padding: 30px; color: #333; background-color: #fdfbf7; }
+              .header { text-align: center; border-bottom: 2px solid #d1c7a3; padding-bottom: 20px; margin-bottom: 25px; }
+              .logo-img { width: 260px; height: auto; object-fit: contain; margin-bottom: 8px; } 
+              .powered-by { font-size: 11px; color: #888; font-weight: bold; letter-spacing: 1.5px; margin: 0 0 15px 0; text-transform: uppercase; }
+              .doc-title { font-size: 18px; font-weight: bold; color: #333; margin: 0; text-transform: uppercase; letter-spacing: 1px; }
+              .user-details { font-size: 14px; font-weight: bold; color: #333; margin: 5px 0 0 0; }
+              .doc-date { font-size: 13px; color: #5c5442; margin: 5px 0 0 0; }
+              .summary-box { background-color: #efeadd; padding: 15px 20px; border-radius: 8px; margin-bottom: 25px; display: flex; justify-content: space-between; border: 1px solid #d1c7a3; }
               .summary-item { text-align: center; }
-              .summary-title { font-size: 12px; color: #5c5442; text-transform: uppercase; font-weight: bold; margin: 0; }
-              .summary-amount { font-size: 22px; margin: 5px 0 0 0; font-weight: bold; }
-              table { width: 100%; border-collapse: collapse; margin-top: 20px; border: 1px solid #d1c7a3; }
-              th { background-color: #efeadd; color: #5c5442; font-weight: bold; text-align: left; padding: 12px 10px; border-bottom: 2px solid #d1c7a3; text-transform: uppercase; font-size: 12px; }
-              td { padding: 12px 10px; border-bottom: 1px solid #e8e4d3; font-size: 13px; }
-              .stamp-container { text-align: right; margin-top: 40px; padding-right: 20px; }
-              .stamp { display: inline-block; border: 3px solid #16a34a; color: #16a34a; font-weight: 900; padding: 15px; border-radius: 50%; transform: rotate(-15deg); text-align: center; letter-spacing: 1px; }
+              .summary-title { font-size: 11px; color: #5c5442; text-transform: uppercase; font-weight: bold; margin: 0; }
+              .summary-amount { font-size: 20px; margin: 4px 0 0 0; font-weight: bold; }
+              table { width: 100%; border-collapse: collapse; margin-top: 10px; border: 1px solid #d1c7a3; }
+              th { background-color: #efeadd; color: #5c5442; font-weight: bold; text-align: left; padding: 10px; border-bottom: 2px solid #d1c7a3; text-transform: uppercase; font-size: 11px; }
+              td { padding: 10px; border-bottom: 1px solid #e8e4d3; font-size: 12px; }
+              .stamp-container { text-align: right; margin-top: 30px; padding-right: 20px; }
+              .stamp { display: inline-block; border: 3px solid #16a34a; color: #16a34a; font-weight: 900; padding: 12px; border-radius: 50%; transform: rotate(-15deg); text-align: center; letter-spacing: 1px; font-size: 12px; }
             </style>
           </head>
           <body>
             <div class="header">
               ${base64Logo ? `<img src="${base64Logo}" class="logo-img" alt="Bharat Bachat Logo" />` : ''}
-              <p class="logo">Bharat Bachat</p>
               <p class="powered-by">Powered By SarvaShikshan</p>
-              <p class="sub-logo">PERSONAL CONSOLIDATED STATEMENT</p>
+              <p class="doc-title">PERSONAL STATEMENT</p>
               <p class="user-details">${userData?.name || 'Member'} (${userData?.phone || ''})</p>
-              <p style="font-size: 14px; color: #5c5442; margin-top: 10px;">Period: ${startDate.toDateString()} to ${endDate.toDateString()}</p>
+              <p class="doc-date">Period: ${startDate.getDate().toString().padStart(2, '0')}/${(startDate.getMonth()+1).toString().padStart(2, '0')}/${startDate.getFullYear()} to ${endDate.getDate().toString().padStart(2, '0')}/${(endDate.getMonth()+1).toString().padStart(2, '0')}/${endDate.getFullYear()}</p>
             </div>
             
             <div class="summary-box">
@@ -292,12 +352,7 @@ const ProfileScreen = ({ navigation }) => {
   const handleLogout = async () => {
     Alert.alert(t('profile.logout', "Log Out"), "Are you sure you want to log out of Bharat Bachat?", [
       { text: t('common.cancel', "Cancel"), style: "cancel" },
-      {
-        text: t('profile.logout', "Logout"), style: "destructive", onPress: async () => {
-          await SecureStore.deleteItemAsync('userToken');
-          navigation.replace('Login');
-        }
-      }
+      { text: t('profile.logout', "Logout"), style: "destructive", onPress: async () => { await SecureStore.deleteItemAsync('userToken'); navigation.replace('Login'); } }
     ]);
   };
 
@@ -335,9 +390,8 @@ const ProfileScreen = ({ navigation }) => {
   };
 
   const getCurrentLanguageName = () => {
-    if (i18n.language === 'mr') return 'Marathi (मराठी)';
-    if (i18n.language === 'hi') return 'Hindi (हिंदी)';
-    return 'English';
+    const currentLang = LANGUAGES.find(lang => lang.code === i18n.language);
+    return currentLang ? currentLang.label : 'English';
   };
 
   const toggleFaq = (id) => { setExpandedFaq(expandedFaq === id ? null : id); };
@@ -357,6 +411,8 @@ const ProfileScreen = ({ navigation }) => {
 
   if (loading) return <View style={styles.centered}><ActivityIndicator size="large" color={COLORS.primaryBlue} /></View>;
 
+  const isEmailVerified = userData?.email_verified_at !== null;
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
 
@@ -365,6 +421,17 @@ const ProfileScreen = ({ navigation }) => {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
+
+        {!isEmailVerified && (
+          <TouchableOpacity style={styles.unverifiedBanner} onPress={requestVerificationOtp}>
+            <Ionicons name="warning" size={20} color="#9a3412" style={{marginRight: 10}} />
+            <View style={{flex: 1}}>
+              <Text style={{color: '#9a3412', fontWeight: 'bold', fontSize: 13}}>Account Not Verified</Text>
+              <Text style={{color: '#c2410c', fontSize: 12, marginTop: 2}}>Tap here to verify your email address to secure your account.</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color="#9a3412" />
+          </TouchableOpacity>
+        )}
 
         <View collapsable={false} ref={profileCardRef} style={styles.profileHeaderCard}>
           <View style={styles.avatarCircle}>
@@ -383,10 +450,17 @@ const ProfileScreen = ({ navigation }) => {
           <Text style={styles.userName}>{userData?.name || 'Member Name'}</Text>
           <Text style={styles.userPhone}>{userData?.phone || userData?.email}</Text>
 
-          <View style={styles.joinedBadge}>
-            <Ionicons name="shield-checkmark" size={14} color={COLORS.success} />
-            <Text style={styles.joinedText}>{t('profile.verified', 'Verified Member')}</Text>
-          </View>
+          {isEmailVerified ? (
+            <View style={styles.joinedBadge}>
+              <Ionicons name="shield-checkmark" size={14} color={COLORS.success} />
+              <Text style={styles.joinedText}>{t('profile.verified', 'Verified Member')}</Text>
+            </View>
+          ) : (
+            <View style={[styles.joinedBadge, { backgroundColor: '#fef08a' }]}>
+              <Ionicons name="time" size={14} color="#854d0e" />
+              <Text style={[styles.joinedText, { color: '#854d0e' }]}>Verification Pending</Text>
+            </View>
+          )}
 
           <View style={{ marginTop: 20, width: '100%', paddingHorizontal: 30 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
@@ -459,9 +533,15 @@ const ProfileScreen = ({ navigation }) => {
 
           <Text style={styles.menuHeader}>{t('profile.support', 'Support & About')}</Text>
 
+          <TouchableOpacity style={styles.menuItem} onPress={() => setAboutModalVisible(true)}>
+            <View style={[styles.menuIconBox, { backgroundColor: '#e0f2fe' }]}><Ionicons name="information-circle" size={20} color="#0284c7" /></View>
+            <Text style={styles.menuText}>{t('dashboard.aboutApp', 'About Bharat Bachat')}</Text>
+            <Ionicons name="chevron-forward" size={20} color={COLORS.textMuted} />
+          </TouchableOpacity>
+
           <TouchableOpacity style={styles.menuItem} onPress={() => setHelpModalVisible(true)}>
             <View style={[styles.menuIconBox, { backgroundColor: '#dcfce7' }]}><Ionicons name="help-buoy" size={20} color="#16a34a" /></View>
-            <Text style={styles.menuText}>{t('profile.helpSupport', 'Help & Support / FAQ')}</Text>
+            <Text style={styles.menuText}>{t('profile.helpSupport', 'Help & FAQ')}</Text>
             <Ionicons name="chevron-forward" size={20} color={COLORS.textMuted} />
           </TouchableOpacity>
 
@@ -491,6 +571,45 @@ const ProfileScreen = ({ navigation }) => {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* --- ALL MODALS --- */}
+      
+      <Modal visible={verifyModalVisible} transparent={true} animationType="slide">
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Verify Email</Text>
+              <TouchableOpacity onPress={() => setVerifyModalVisible(false)}><Ionicons name="close" size={24} color={COLORS.textDark} /></TouchableOpacity>
+            </View>
+            <Text style={{color: COLORS.textGray, marginBottom: 15, lineHeight: 20}}>
+              We have sent a 4-digit code to <Text style={{fontWeight: 'bold', color: COLORS.textDark}}>{userData?.email}</Text>. Enter it below to verify your account.
+            </Text>
+            
+            <TextInput 
+              style={[styles.textInput, { textAlign: 'center', fontSize: 24, letterSpacing: 10, height: 60, marginBottom: 20, borderWidth: 1, borderColor: COLORS.primaryBlue }]} 
+              value={emailOtp} 
+              onChangeText={setEmailOtp} 
+              keyboardType="number-pad" 
+              maxLength={4} 
+              placeholder="0000" 
+            />
+            
+            <TouchableOpacity style={[styles.generateBtn, isVerifying && { opacity: 0.7 }]} onPress={submitVerificationOtp} disabled={isVerifying}>
+              {isVerifying ? <ActivityIndicator color={COLORS.bgWhite} /> : <Text style={styles.generateBtnText}>Verify Now</Text>}
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={{ marginTop: 20, alignItems: 'center' }} 
+              onPress={requestVerificationOtp} 
+              disabled={resendTimer > 0}
+            >
+              <Text style={{ color: resendTimer > 0 ? COLORS.textMuted : COLORS.primaryBlue, fontWeight: 'bold' }}>
+                {resendTimer > 0 ? `Resend Code in ${resendTimer}s` : 'Resend Code'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
       <Modal visible={editModalVisible} transparent={true} animationType="slide">
         <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -551,23 +670,76 @@ const ProfileScreen = ({ navigation }) => {
 
       <Modal visible={langModalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { maxHeight: '80%' }]}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>{t('profile.changeLanguage', 'Select Language')}</Text>
               <TouchableOpacity onPress={() => setLangModalVisible(false)}><Ionicons name="close" size={24} color={COLORS.textDark} /></TouchableOpacity>
             </View>
-            <TouchableOpacity style={styles.langOption} onPress={() => changeLanguage('en')}>
-              <Text style={[styles.langText, i18n.language === 'en' && styles.langTextActive]}>English</Text>
-              {i18n.language === 'en' && <Ionicons name="checkmark-circle" size={24} color={COLORS.primaryBlue} />}
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.langOption} onPress={() => changeLanguage('mr')}>
-              <Text style={[styles.langText, i18n.language === 'mr' && styles.langTextActive]}>Marathi (मराठी)</Text>
-              {i18n.language === 'mr' && <Ionicons name="checkmark-circle" size={24} color={COLORS.primaryBlue} />}
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.langOption} onPress={() => changeLanguage('hi')}>
-              <Text style={[styles.langText, i18n.language === 'hi' && styles.langTextActive]}>Hindi (हिंदी)</Text>
-              {i18n.language === 'hi' && <Ionicons name="checkmark-circle" size={24} color={COLORS.primaryBlue} />}
-            </TouchableOpacity>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {LANGUAGES.map((lang) => (
+                <TouchableOpacity 
+                  key={lang.code} 
+                  style={styles.langOption} 
+                  onPress={() => changeLanguage(lang.code)}
+                >
+                  <Text style={[styles.langText, i18n.language === lang.code && styles.langTextActive]}>
+                    {lang.label}
+                  </Text>
+                  {i18n.language === lang.code && (
+                    <Ionicons name="checkmark-circle" size={24} color={COLORS.primaryBlue} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={aboutModalVisible} transparent={true} animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { maxHeight: '90%' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>{t('dashboard.aboutApp', 'About Bharat Bachat')}</Text>
+              <TouchableOpacity onPress={() => setAboutModalVisible(false)}><Ionicons name="close" size={24} color={COLORS.textDark} /></TouchableOpacity>
+            </View>
+            
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+              <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 15}}>
+                <Image source={require('../../assets/icon.png')} style={{width: 50, height: 50, marginRight: 12}} resizeMode="contain" />
+                <View>
+                  <Text style={{fontSize: 22, fontWeight: '900', color: COLORS.primaryBlue, letterSpacing: 0.5}}>BHARAT BACHAT</Text>
+                  <Text style={{fontSize: 12, color: '#0369a1', fontWeight: 'bold', letterSpacing: 1, textTransform: 'uppercase'}}>Bachat Gat App • v1.0.0</Text>
+                </View>
+              </View>
+
+              <Text style={styles.helpText}>{t('about.p1', 'Bharat Bachat is a secure digital ledger designed specifically for Self-Help Groups (Bachat Gats).')}</Text>
+              <Text style={styles.helpText}>{t('about.p2', 'Our mission is to replace easily-lost paper passbooks with a fully transparent, offline-capable mobile application.')}</Text>
+              
+              <View style={{ marginTop: 15, padding: 20, backgroundColor: '#e0f2fe', borderRadius: 12, borderWidth: 1, borderColor: '#bae6fd' }}>
+                 <Text style={{ fontSize: 12, color: '#0284c7', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 12 }}>Core Development Team</Text>
+                 <View style={{ paddingLeft: 5 }}>
+                     <Text style={{ fontSize: 15, color: COLORS.textDark, fontWeight: 'bold', marginBottom: 8 }}>•  Sanket Dhamne</Text>
+                     <Text style={{ fontSize: 15, color: COLORS.textDark, fontWeight: 'bold', marginBottom: 8 }}>•  Vikram Jadhav</Text>
+                     <Text style={{ fontSize: 15, color: COLORS.textDark, fontWeight: 'bold', marginBottom: 8 }}>•  Pawan Barde</Text>
+                     <Text style={{ fontSize: 15, color: COLORS.textDark, fontWeight: 'bold', marginBottom: 8 }}>•  Kunal Chikram</Text>
+                     <Text style={{ fontSize: 15, color: COLORS.textDark, fontWeight: 'bold', marginBottom: 8 }}>•  Sanskar Dikondwar</Text>
+                 </View>
+              </View>
+
+              <View style={{ marginTop: 25, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#bae6fd' }}>
+                <Text style={{ fontSize: 11, color: '#0369a1', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 1.2 }}>Powered By</Text>
+                <TouchableOpacity onPress={() => Linking.openURL('https://www.sarvashikshan.com')} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, marginBottom: 20 }}>
+                  <Ionicons name="globe-outline" size={20} color={COLORS.primaryBlue} style={{ marginRight: 8 }} />
+                  <Text style={{ fontSize: 16, color: COLORS.primaryBlue, fontWeight: 'bold', textDecorationLine: 'underline' }}>SarvaShikshan® e-Learning</Text>
+                </TouchableOpacity>
+
+                <Text style={{ fontSize: 11, color: '#0369a1', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 1.2 }}>Contact Support</Text>
+                <TouchableOpacity onPress={() => Linking.openURL('mailto:bharatbachat@sarvashikshan.com')} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+                  <Ionicons name="mail" size={20} color={COLORS.primaryBlue} style={{ marginRight: 8 }} />
+                  <Text style={{ fontSize: 15, color: COLORS.primaryBlue, fontWeight: 'bold', textDecorationLine: 'underline' }}>bharatbachat@sarvashikshan.com</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -576,26 +748,10 @@ const ProfileScreen = ({ navigation }) => {
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { height: '90%', paddingBottom: 0 }]}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{t('dashboard.faqHelp', 'Help & Support')}</Text>
+              <Text style={styles.modalTitle}>{t('profile.helpSupport', 'Help & FAQ')}</Text>
               <TouchableOpacity onPress={() => setHelpModalVisible(false)}><Ionicons name="close" size={24} color={COLORS.textDark} /></TouchableOpacity>
             </View>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-              
-              {/* --- UPDATED: HELP & SUPPORT MODAL WITH EMAIL AND BRANDING --- */}
-              <View style={styles.aboutCard}>
-                <Ionicons name="information-circle" size={24} color="#0284c7" style={{marginBottom: 10}} />
-                <Text style={styles.helpText}>{t('about.p1', 'Bharat Bachat is a secure digital ledger designed specifically for Self-Help Groups (Bachat Gats).')}</Text>
-                <Text style={styles.helpText}>{t('about.p2', 'Our mission is to replace easily-lost paper passbooks with a fully transparent, offline-capable mobile application.')}</Text>
-                
-                <View style={{ marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#bae6fd' }}>
-                  <Text style={{ fontSize: 13, color: '#0369a1', fontWeight: 'bold' }}>{t('about.supportEmail', 'For any other queries, reach out to us at:')}</Text>
-                  <TouchableOpacity onPress={() => Linking.openURL('mailto:bharatbachat@sarvashikshan.com')} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 5 }}>
-                    <Ionicons name="mail" size={16} color={COLORS.primaryBlue} style={{ marginRight: 6 }} />
-                    <Text style={{ fontSize: 15, color: COLORS.primaryBlue, fontWeight: 'bold', textDecorationLine: 'underline' }}>{t('about.emailAddress', 'bharatbachat@sarvashikshan.com')}</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
               <Text style={styles.faqCategoryTitle}>{t('faq.catGroups', '🏢 Group Management')}</Text>
               {renderFaqItem('q1', 'faq.q1', 'faq.a1')}
               {renderFaqItem('q2', 'faq.q2', 'faq.a2')}
@@ -613,7 +769,6 @@ const ProfileScreen = ({ navigation }) => {
         </View>
       </Modal>
 
-      {/* NEW: FULL SCREEN IMAGE MODAL */}
       <Modal visible={fullScreenImage} transparent={true} animationType="fade" onRequestClose={() => setFullScreenImage(false)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center', alignItems: 'center' }}>
           <TouchableOpacity
@@ -641,6 +796,7 @@ const styles = StyleSheet.create({
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: { flexDirection: 'row', alignItems: 'center', padding: 20, paddingTop: 10, backgroundColor: COLORS.bgWhite, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
   headerTitle: { fontSize: 20, fontWeight: 'bold', color: COLORS.textDark, textAlign: 'center', width: '100%' },
+  unverifiedBanner: { flexDirection: 'row', backgroundColor: '#ffedd5', padding: 15, marginHorizontal: 20, marginTop: 15, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: '#fdba74' },
   profileHeaderCard: { alignItems: 'center', backgroundColor: COLORS.bgWhite, paddingVertical: 30, paddingHorizontal: 20, borderBottomLeftRadius: 30, borderBottomRightRadius: 30, elevation: 4, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, marginBottom: 20 },
   avatarCircle: { width: 90, height: 90, borderRadius: 45, backgroundColor: COLORS.primaryBlueLight, justifyContent: 'center', alignItems: 'center', marginBottom: 15, position: 'relative', overflow: 'visible' },
   avatarImage: { width: 90, height: 90, borderRadius: 45 },
@@ -673,12 +829,11 @@ const styles = StyleSheet.create({
   generateBtn: { flexDirection: 'row', backgroundColor: COLORS.primaryBlue, padding: 16, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginTop: 10 },
   generateBtnText: { color: COLORS.bgWhite, fontSize: 16, fontWeight: 'bold' },
   inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bgLight, borderWidth: 1, borderColor: COLORS.borderLight, paddingHorizontal: 15, borderRadius: 12, marginBottom: 20, height: 55 },
-  textInput: { flex: 1, fontSize: 16, color: COLORS.textDark },
+  textInput: { backgroundColor: COLORS.bgLight, padding: 15, borderRadius: 12, fontSize: 16, borderWidth: 1, borderColor: COLORS.borderLight, color: COLORS.textDark, width: '100%' },
   langOption: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: COLORS.borderLight },
   langText: { fontSize: 18, color: COLORS.textDark },
   langTextActive: { fontWeight: 'bold', color: COLORS.primaryBlue },
-  aboutCard: { backgroundColor: '#f0f9ff', padding: 20, borderRadius: 16, borderWidth: 1, borderColor: '#bae6fd', marginBottom: 20 },
-  helpText: { fontSize: 14, color: '#0369a1', lineHeight: 22, marginBottom: 10, fontWeight: '500' },
+  helpText: { fontSize: 15, color: '#0369a1', lineHeight: 24, marginBottom: 15, fontWeight: '500' },
   faqCategoryTitle: { fontSize: 13, fontWeight: 'bold', color: COLORS.textMuted, textTransform: 'uppercase', letterSpacing: 1.2, marginTop: 10, marginBottom: 10 },
   faqBox: { backgroundColor: COLORS.bgLight, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: COLORS.borderLight, overflow: 'hidden' },
   faqBoxActive: { borderColor: COLORS.primaryBlueLight, backgroundColor: '#f0f7ff' },
